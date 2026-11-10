@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CAFO Pond Watch</title>
+<meta name="robots" content="noindex">
+<!-- Prototype v1. Esri World Imagery fills the screen at every level; white cards float on top (GT Review look).
+     Left: location cards that build up per level (world > country > state). Served by app/server.py at
+     /static/proto/index_v1.html; reads the review app API, points.json and dash.json (scripts/proto_dashboard_data.py). -->
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..100,600..800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{--ink:#f4f7f5;--ink2:rgba(236,241,238,.82);--muted:rgba(226,233,229,.6);--line:rgba(255,255,255,.16);--forest:#ffffff;--box:rgba(255,255,255,.07);
+  --glass:linear-gradient(145deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.05) 38%,rgba(255,255,255,.02) 62%,rgba(255,255,255,.09) 100%),rgba(18,20,24,.38);
+  --glass-edge:rgba(255,255,255,.24);--glass-shadow:0 10px 32px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.38),inset 0 -1px 0 rgba(255,255,255,.06);
+  --blur:blur(26px) saturate(185%);
+  --accent:#ec8454;--good:#2e9d5b;--bad:#d64545;--warn:#d99a00;
+  --fd:"Archivo","Arial Narrow",sans-serif;--fb:Calibri,"Segoe UI",system-ui,sans-serif;--fm:"IBM Plex Mono",ui-monospace,monospace}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;overflow:hidden;background:#0b0c0d;color:var(--ink);font:13.5px/1.4 var(--fb)}
+button{font:inherit}
+.mono{font-family:var(--fm);font-variant-numeric:tabular-nums}
+#map{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse at 50% 45%,#16202b 0%,#0b1016 55%,#050608 100%)}
+.leaflet-top.leaflet-left{left:258px;top:56px}
+body.world .leaflet-top.leaflet-left{left:12px}
+#lcol.anim{overflow:visible}
+.lcard{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.lcard:hover{border-color:rgba(255,255,255,.5);box-shadow:var(--glass-shadow),0 0 0 1px rgba(255,255,255,.18)}
+#lcol.anim .lcard{position:relative;z-index:2}
+body.farm .leaflet-top.leaflet-left{top:118px}
+.leaflet-control-attribution{font-size:10px}
+.leaflet-bar{border:1px solid var(--glass-edge)!important;border-radius:12px!important;overflow:hidden;box-shadow:var(--glass-shadow)!important}
+.leaflet-bar a{background:rgba(18,20,24,.5)!important;color:#fff!important;backdrop-filter:var(--blur);border-bottom-color:rgba(255,255,255,.15)!important}
+.leaflet-tooltip{background:rgba(18,20,24,.75);color:#fff;border:1px solid var(--glass-edge);border-radius:8px;box-shadow:none}
+.leaflet-tooltip-top:before{border-top-color:rgba(18,20,24,.75)}
+
+/* ---- navbar: see-through, blurred ---- */
+.nav{position:fixed;left:0;right:0;top:0;height:52px;z-index:1000;display:flex;align-items:center;gap:14px;padding:0 14px;color:#fff;
+  background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.03)),rgba(14,16,18,.32);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:1px solid rgba(255,255,255,.2);box-shadow:inset 0 -1px 0 rgba(255,255,255,.06)}
+.nav .rsl{height:48px;padding:3px 10px;border-radius:12px;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow)}
+.nav .brand{font:800 19px/1 var(--fd);font-stretch:74%;letter-spacing:.01em;white-space:nowrap}
+.nav .crumbs{font:500 12.5px var(--fm);color:#e6ece8;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden}
+.nav .crumbs a{color:#fff;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.4)}
+.nav .crumbs img{height:14px;border-radius:2px;vertical-align:-2px;box-shadow:0 0 0 1px rgba(255,255,255,.4)}
+.nav .crumbs select,.nav .crumbs input{font:500 12px var(--fm);color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.26);border-radius:8px;padding:3px 6px;outline:none;max-width:190px}
+.nav .crumbs select{cursor:pointer}
+.nav .crumbs input{width:170px}
+.nav .crumbs input::placeholder{color:rgba(255,255,255,.55)}
+.nav .crumbs select:hover,.nav .crumbs input:hover,.nav .crumbs input:focus{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.5)}
+.nav .crumbs option{background:#1b1e22;color:#fff}
+.nav .sp{flex:1}
+.nav .step{display:flex;align-items:center;gap:6px;font:500 12px var(--fm)}
+.nav .step button{all:unset;cursor:pointer;padding:3px 9px;border:1px solid rgba(255,255,255,.5);border-radius:4px}
+.nav .step button:hover{background:rgba(255,255,255,.15)}
+.nav .ct{height:13px;opacity:.95}
+
+/* ---- floating cards (GT Review look) ---- */
+.card{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-edge);border-radius:16px;box-shadow:var(--glass-shadow);padding:11px 13px;min-width:0;color:var(--ink)}
+.card svg text{fill:rgba(236,241,238,.78)}
+.card svg text.axt,.az-grid svg text.axt{fill:rgba(236,241,238,.58);font-weight:600;letter-spacing:.02em}
+.card svg line:not(#areaYear){stroke:rgba(255,255,255,.13)}
+.card svg rect[fill="#eef1ec"]{fill:rgba(255,255,255,.1)}
+.card h3{margin:0 0 4px;font:700 11px/1.2 var(--fb);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.card .say{margin:2px 0 6px;color:var(--ink2);font-size:13px}
+.card .say b{color:var(--ink)}
+.card svg{display:block;width:100%}
+.note{font-size:11.5px;color:var(--muted);margin:4px 0 0}
+.keys{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:11.5px;color:var(--ink2);margin-top:4px}
+.keys span{display:inline-flex;align-items:center;gap:5px}
+.keys i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.card .keys svg{display:inline-block;width:20px;height:8px;overflow:visible}
+.lead{display:grid;grid-template-columns:16px 1fr;gap:6px;color:var(--ink2);padding:5px 0;border-top:1px solid rgba(255,255,255,.1)}
+.lead:first-of-type{border-top:0}
+.lead b{color:var(--ink)}
+.lead i{font-style:normal;color:var(--accent);font-family:var(--fm)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tier{display:flex;align-items:baseline;gap:4px 8px;margin-bottom:9px;flex-wrap:wrap}
+.tier b,.tier .lvl,.tier .cmp{white-space:nowrap}
+.tier b{font:800 22px/1 var(--fd);font-stretch:74%;color:#fff}
+.tier .lvl{font:600 10.5px var(--fm);letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.3);color:var(--ink2)}
+.tier .cmp{margin-left:auto;font:500 11px var(--fm);color:var(--muted)}
+.kpi{background:linear-gradient(160deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:7px 9px;min-width:0}
+.kpi .k{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font:500 20px/1.15 var(--fm);white-space:nowrap}
+.kpi .s{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qc{display:inline-block;font:500 11.5px var(--fm);padding:1px 8px;border-radius:999px;border:1px solid}
+.flist{display:grid;gap:2px;max-height:280px;overflow:auto}
+.fitem{display:grid;grid-template-columns:12px 1fr auto;gap:8px;align-items:center;padding:5px 6px;border-radius:5px;cursor:pointer}
+.fitem:hover{background:rgba(255,255,255,.09)}
+.fitem .id{font:500 12px var(--fm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fitem i{width:10px;height:10px;border-radius:50%;border:2.5px solid}
+.fitem .m{color:var(--muted);font-size:11.5px}
+.seg{display:inline-flex;border:1px solid rgba(255,255,255,.28);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.06);padding:2px;gap:2px}
+.seg button{all:unset;cursor:pointer;padding:4px 12px;font-weight:600;color:var(--ink2);border-radius:999px}
+.seg button:hover{background:rgba(255,255,255,.1)}
+.seg button.on{background:rgba(255,255,255,.88);color:#15181b;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.ev-row{display:grid;grid-template-columns:12px 1fr;gap:8px;color:var(--ink2);padding:3px 0}
+.ev-row i{width:10px;height:10px;border-radius:50%;margin-top:4px}
+.ev-row b{color:var(--ink)}
+@keyframes ballout{to{opacity:0}}
+@keyframes lndraw{to{stroke-dashoffset:0}}
+@keyframes dotin{to{opacity:1}}
+
+/* left: location cards that build up per level */
+#lcol{position:fixed;left:12px;top:64px;bottom:12px;width:236px;z-index:900;display:flex;flex-direction:column;gap:10px;overflow-y:auto;scrollbar-width:thin}
+.lcard{padding:7px 9px;transition:opacity .35s}
+.lcard .lt{display:flex;align-items:center;gap:6px;font-weight:700;color:#fff;margin-bottom:4px}
+.lcard .lt img{height:13px;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+.lcard .lt span{margin-left:auto;font:500 11px var(--fm);color:var(--muted)}
+.lcard svg path.hit,.lcard svg .pinmini{cursor:pointer}
+/* right: data cards */
+#rcol{position:fixed;right:12px;top:64px;bottom:12px;width:380px;z-index:900;display:grid;gap:10px;align-content:start;overflow-y:auto;scrollbar-width:thin}
+/* farm: footprint card in the middle, time series at the bottom */
+.fbar{position:fixed;left:50%;transform:translateX(calc(-50% - 73px));top:64px;z-index:900;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:6px 10px;border-radius:999px;max-width:calc(100vw - 690px)}
+.fbar .bl{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.card.fbar{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none;padding:0}   /* only the buttons are glass */
+.fbar .seg{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--glass-shadow)}
+.fbar .bl{color:#fff;text-shadow:0 1px 3px #000,0 0 8px rgba(0,0,0,.8)}
+#yearbig .ys{display:block;margin-top:4px;font:500 11.5px var(--fm);color:#eef2ef}
+.fbar{flex-direction:column;gap:5px}
+.fbar .frow{display:flex;align-items:center;gap:8px}
+.fyear{margin-left:4px;font:800 24px/1 var(--fd);font-stretch:70%;color:#fff;text-shadow:0 1px 4px #000,0 0 10px rgba(0,0,0,.8);white-space:nowrap}
+.fyear small{font:600 11px var(--fm);color:var(--warn);margin-left:4px}
+.mapleg{position:fixed;left:258px;right:404px;bottom:226px;z-index:850;display:flex;gap:12px;flex-wrap:nowrap;justify-content:center;white-space:nowrap;overflow:hidden;font:500 9.5px var(--fm);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 8px rgba(0,0,0,.7);pointer-events:none}
+.mapleg span{display:inline-flex;gap:6px;align-items:center}
+.cbar{display:inline-flex;align-items:center;gap:5px}
+.cbar .grad{position:relative;display:inline-block;width:150px;height:8px;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.55);
+  background:linear-gradient(90deg,#0d366b 0%,#2a78d6 16.25%,#9ec5f4 25%,#f0efec 32.5%,#f2b8b0 50%,#e34948 75%,#8f1f1f 100%)}
+.cbar .grad u{position:absolute;left:32.5%;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 2px #000}
+.mapleg i{width:8px;height:8px;border-radius:3px;display:inline-block;box-shadow:0 0 0 1px rgba(255,255,255,.6)}
+.leaflet-image-layer.s2img{image-rendering:pixelated}
+.leaflet-image-layer.s2img.dim{filter:brightness(.45) saturate(.5)}
+.plabel{font:700 12px/15px var(--fm);white-space:nowrap;padding:0 2px;text-shadow:1px 0 #fff,-1px 0 #fff,0 1px #fff,0 -1px #fff,1px 1px #fff,-1px -1px #fff,1px -1px #fff,-1px 1px #fff,0 0 4px #fff,0 0 7px rgba(255,255,255,.8);pointer-events:none}
+.board{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.board .bl{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.board .vk{font:500 12px var(--fm);color:var(--ink2)}
+.stagebox{position:relative;flex:1;min-height:0;display:grid;place-items:center}
+.img{position:relative;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.25);max-width:100%;max-height:100%;box-shadow:0 4px 16px rgba(0,0,0,.35)}
+.zw{position:absolute}
+.zw img{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+.zw svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.tag{position:absolute;font:500 11.5px var(--fm);padding:2px 6px;border-radius:4px;color:#0d0f10;white-space:nowrap;transform:translateY(-100%);pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.yearbig{position:absolute;right:12px;top:8px;font:800 44px/1 var(--fd);font-stretch:68%;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8);pointer-events:none}
+.badge{position:absolute;left:12px;top:12px;font:500 11.5px var(--fm);padding:3px 8px;border-radius:6px;background:rgba(217,154,0,.92);color:#111}
+.legend3{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:6px;min-height:20px;flex:none}
+.legend3 span{display:inline-flex;gap:6px;align-items:center}
+.legend3 i{width:12px;height:12px;border-radius:3px;display:inline-block}
+#time{position:fixed;left:258px;right:404px;bottom:12px;height:210px;z-index:900;overflow:hidden}
+.striphead{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.play{width:28px;height:28px;border-radius:50%;border:0;background:var(--accent);color:#fff;cursor:pointer;display:grid;place-items:center;box-shadow:0 2px 8px rgba(236,132,84,.5)}
+.thumbs{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:8px}
+.th{cursor:pointer;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);transition:transform .15s}
+.th:hover{transform:translateY(-2px)}
+.th.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent),0 0 16px rgba(236,132,84,.45)}
+.th.thin{border-style:dashed;border-color:var(--warn)}
+.th img{display:block;width:100%;height:122px;object-fit:cover;image-rendering:pixelated}
+.th .y{display:flex;justify-content:space-between;padding:3px 6px 0;font:500 11px var(--fm);color:var(--ink2)}
+.th .ev{padding:0 6px 4px;font:500 10px var(--fm);min-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th.none{opacity:.35;cursor:default}
+
+@media (max-width:900px){
+  #lcol{display:none}
+  #rcol{left:8px;right:8px;width:auto;top:auto;bottom:8px;max-height:40vh}
+  #time{left:8px;right:8px;bottom:calc(40vh + 16px)}
+  .fbar{left:8px;right:8px;transform:none;max-width:none;border-radius:16px}
+  #yearbig{right:16px;top:150px}
+  .mapleg{left:8px;right:8px;bottom:calc(40vh + 236px)}
+  .nav .crumbs,.nav .ct{display:none}
+}
+/* map markers */
+.cmark{cursor:pointer;filter:drop-shadow(0 7px 5px rgba(0,0,0,.5))}
+.cmark .pin{position:relative;width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:radial-gradient(circle at 30% 25%,#ffffff,#eef1f4 50%,#b8c1ca);border:3px solid var(--c,#999);box-shadow:0 0 0 1.5px rgba(255,255,255,.55),0 0 16px var(--c,#999),inset -3px -3px 6px rgba(0,0,0,.22);transition:transform .15s}
+.cmark .pin span{position:absolute;inset:0;display:grid;place-items:center;transform:rotate(45deg);font-size:18px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}
+.cmark:hover .pin{transform:rotate(-45deg) scale(1.18)}
+.cmark .sh{width:20px;height:6px;margin:2px auto 0;border-radius:50%;background:radial-gradient(rgba(0,0,0,.75),transparent 70%)}
+.chip{cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--c);font:600 11px var(--fm);color:#fff;white-space:nowrap;box-shadow:var(--glass-shadow)}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--c)}
+.slabel{display:inline-block;transform:translate(-50%,-50%);font:800 16px/1 var(--fd);letter-spacing:.06em;color:#fff;text-shadow:0 1px 3px #000,0 0 10px rgba(0,0,0,.9);white-space:nowrap;pointer-events:none}
+#globe,#globegl{position:fixed;inset:0;z-index:1;opacity:0;pointer-events:none;transition:opacity .7s;touch-action:none;cursor:grab}
+body.globe #globe,body.globe #globegl{opacity:1}
+body.globe #globe{pointer-events:auto}
+#map{transition:opacity .7s,transform 1.1s cubic-bezier(.2,.7,.2,1)}
+body.globe #map{opacity:0;pointer-events:none}
+body.globe{background:radial-gradient(ellipse at 42% 52%,#14243a 0%,#080b10 62%,#050608 100%)}
+body.tilt #map{transform:perspective(1700px) rotateX(22deg) scale(1.1);transform-origin:50% 62%}
+body.tilt .leaflet-control-zoom{display:none}
+.slabel span{display:block;font:500 10.5px var(--fm)}
+.tip{position:fixed;z-index:2000;pointer-events:none;padding:6px 10px;border-radius:10px;font-size:12.5px;color:#fff;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow)}
+.tip b{font-family:var(--fm);font-weight:500}
+.tip .m{color:var(--ink2)}
+.loading{position:fixed;inset:0;display:grid;place-items:center;color:#ddd;background:#0b0c0d;z-index:3000;transition:opacity .4s}
+</style></head><body>
+<div id="map"></div>
+<canvas id="globegl"></canvas>
+<canvas id="globe"></canvas>
+<header class="nav">
+  <img class="rsl" src="img/rsl_logo_white.png" alt="SLU Remote Sensing Lab">
+  <span class="brand">CAFO Pond Watch</span>
+  <span class="crumbs" id="crumbs"></span>
+  <span class="sp"></span>
+  <span class="step" id="step" hidden><button id="fprev" title="Previous farm">◀</button><span id="fpos"></span><button id="fnext" title="Next farm">▶</button></span>
+  <img class="ct" src="img/climatetrace_logo.svg" alt="Climate TRACE">
+</header>
+<aside id="lcol">
+  <div class="card lcard" id="cGlobal" hidden><div class="lt">World<span id="gSub"></span></div><svg id="gsvg"></svg></div>
+  <div class="card lcard" id="cCountry" hidden><div class="lt" id="cTitle"></div><svg id="csvg"></svg></div>
+  <div class="card lcard" id="cState" hidden><div class="lt" id="sTitle"></div><svg id="ssvg"></svg></div>
+</aside>
+<aside id="rcol"></aside>
+<div class="card fbar" id="mid" hidden>
+  <div class="frow">
+    <span class="bl">View</span><span class="seg" id="zoomseg"><button data-z="farm" class="on">Whole farm</button><button data-z="ponds">Ponds</button></span>
+    <span class="bl">Image</span><span class="seg" id="modes"><button data-m="s2" class="on">Sentinel-2 + ponds</button><button data-m="bsi">BSI-E</button><button data-m="fill">Pond change</button></span>
+    <span class="fyear" id="yearbig"></span>
+  </div>
+</div>
+<div class="mapleg" id="leg" hidden></div>
+<section class="card" id="time" hidden>
+  <div class="striphead"><button class="play" id="play" aria-label="Play years">▶</button><h3 style="margin:0" id="stripk">Summer image each year</h3></div>
+  <div class="thumbs" id="thumbs"></div>
+</section>
+<div class="tip" id="tip" hidden></div>
+<div class="loading" id="loading">Loading…</div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script>
+"use strict";
+// ======================================================================= setup
+const $ = (s) => document.querySelector(s);
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 0) => v == null || Number.isNaN(v) ? "–" : Number(v).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: d });
+const pct = (v) => v == null || !isFinite(v) ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(0)}%`;
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const human = (s) => s ? String(s).replace(/^proposed:/, "").replace(/_/g, " ") : "–";
+const titleCase = (s) => human(s).replace(/\b\w/g, (m) => m.toUpperCase());
+const COUNTRIES = {
+  USA: { id: "840", name: "United States", scope: "US", iso2: "us", col: "#3b7be0" }, CAN: { id: "124", name: "Canada", iso2: "ca", col: "#e5383b" },
+  CHN: { id: "156", name: "China", iso2: "cn", col: "#e9b400" }, DEU: { id: "276", name: "Germany", iso2: "de", col: "#d99a00" },
+  FRA: { id: "250", name: "France", iso2: "fr", col: "#5b6ee0" }, RUS: { id: "643", name: "Russia", iso2: "ru", col: "#8a95a3" },
+  TUR: { id: "792", name: "Türkiye", iso2: "tr", col: "#e3263b" }, AUS: { id: "036", name: "Australia", iso2: "au", col: "#2e9d5b" },
+  NZL: { id: "554", name: "New Zealand", iso2: "nz", col: "#7a8691" },
+};
+const FLAG = (c) => `https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/flags/4x3/${COUNTRIES[c].iso2}.svg`;
+const flagImg = (c) => `<img src="${FLAG(c)}" alt="${COUNTRIES[c].name} flag">`;
+const BY_ID = Object.fromEntries(Object.entries(COUNTRIES).map(([k, v]) => [v.id, k]));
+const QCC = { correct: "#2e9d5b", incorrect: "#d64545", uncertain: "#d99a00" };
+const qcCol = (r) => QCC[r] || "#9aa29c";
+const pcol = (p, n) => p == null || n < 10 ? "#9aa29c" : p >= 0.7 ? QCC.correct : p >= 0.4 ? QCC.uncertain : QCC.incorrect;
+const POND_COL = ["#3987e5", "#9085e9", "#e0a526", "#e66767", "#4cc27a", "#d95926", "#5598e7", "#ffe6b8"];
+const STATUS = { stable: ["stable", "#3987e5"], new: ["new", "#ec8454"], removed: ["removed", "#e66767"], transient: ["intermittent", "#e0a526"],
+  seasonal: ["seasonal", "#e0a526"], mixed: ["intermittent", "#e0a526"], one_off: ["single year", "#858a90"] };
+const LOWER48 = [[24.5, -124.8], [49.4, -66.9]];
+const ABBR = { alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA",
+  michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV", new_hampshire: "NH", new_jersey: "NJ", new_mexico: "NM",
+  new_york: "NY", north_carolina: "NC", north_dakota: "ND", ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", rhode_island: "RI", south_carolina: "SC",
+  south_dakota: "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT", virginia: "VA", washington: "WA", west_virginia: "WV", wisconsin: "WI", wyoming: "WY" };
+const LAB = { USA: [-98.5, 39.5], TUR: [35.2, 39.1], CHN: [103, 35.5] };   // label points (country centre, lower 48 for the US)
+const stKey = (name) => name.toLowerCase().replace(/ /g, "_");
+const countryOf = (region) => region.split("/")[0];
+
+let FEAT = {}, PTS = [], PREC = {}, DASH = { farms: [], regions: {}, years: [] }, WORLD, LAND, STATES, ACTIVE = new Set(), SPECTRA = null;
+const shown = (c, st) => PTS.filter((p) => p.c === c && p.img && (!st || p.region === `USA/${st}`));
+let IMG = {}, SPEC = [];
+const S = { view: "world", c: null, st: null, op: null };
+const F = { data: null, years: [], yi: 0, mode: "s2", zoom: "farm", ponds: [], playing: null };
+const tip = $("#tip");
+const showTip = (html, e) => { tip.innerHTML = html; tip.hidden = false; const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - r.width - 8) + "px"; tip.style.top = Math.min(e.clientY + 14, innerHeight - r.height - 8) + "px"; };
+const hideTip = () => { tip.hidden = true; };
+
+// ======================================================================= background map (Esri everywhere)
+const USE_GLOBE = false;   // 3D globe at world level (off: flat world map, simpler and lighter)
+const WORLD_B = [[-56, -168], [76, 190]];
+const MAP = L.map("map", { zoomControl: true, worldCopyJump: true, zoomSnap: 0.25, minZoom: 1.25 }).setView([30, 20], 2.5);
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Esri World Imagery" }).addTo(MAP);
+const REF = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, opacity: .75 });
+MAP.attributionControl.setPrefix(false);
+let CTX = L.layerGroup().addTo(MAP), FARM = L.layerGroup().addTo(MAP);
+MAP.createPane("maskpane").style.zIndex = 350; MAP.getPane("maskpane").style.pointerEvents = "none";
+function clipTo(feature) {   // hide everything outside the selected country or state
+  const g = feature.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  const holes = polys.map((pl) => pl[0].map(([lon, lat]) => [lat, lon]));
+  MASK = L.polygon([[[-89.9, -540], [89.9, -540], [89.9, 540], [-89.9, 540]], ...holes], { pane: "maskpane", stroke: false, fillColor: "url(#maskg)", fillOpacity: 1, interactive: false }).addTo(CTX);
+  MASK._ctr = L.latLngBounds(holes.reduce((a, b) => (b.length > a.length ? b : a))).getCenter();   // centre of the main landmass
+  maskGrad();
+}
+// night-slate radial backdrop outside the selected area, centred on it (layer-pixel space, so it stays put while panning)
+let MASK = null;
+function maskGrad() {
+  if (!MASK || !MASK._renderer || !MAP.hasLayer(MASK)) return;
+  const svg = MASK._renderer._container; let g = svg.querySelector("#maskg");
+  if (!g) { const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    defs.innerHTML = `<radialGradient id="maskg" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#22303f"/><stop offset=".34" stop-color="#151e29"/><stop offset=".68" stop-color="#0b1016"/><stop offset="1" stop-color="#050608"/></radialGradient>`;
+    svg.prepend(defs); g = svg.querySelector("#maskg"); }
+  const c = MAP.latLngToLayerPoint(MASK._ctr); g.setAttribute("cx", c.x); g.setAttribute("cy", c.y); g.setAttribute("r", Math.max(innerWidth, innerHeight) * .85);
+}
+MAP.on("zoomend viewreset", maskGrad); addEventListener("resize", maskGrad);
+function hoverable(lay, base, over) { return lay.on("mouseover", (e) => e.layer.setStyle(over)).on("mouseout", (e) => e.layer.setStyle(base)); }
+const FIT = { paddingTopLeft: [264, 70], paddingBottomRight: [410, 24] };
+function fly(bounds, maxZoom = 8) { MAP.flyToBounds(bounds, { ...FIT, maxZoom, duration: 1.1 }); }
+function pinIcon(col) {
+  return L.divIcon({ className: "", iconSize: [34, 50], iconAnchor: [17, 50],
+    html: `<div class="cmark" style="--c:${col}"><div class="pin"><span>🐄</span></div><div class="sh"></div></div>` });
+}
+
+// left cards: a click anywhere outside a country, state or pin opens that card's level
+$("#cGlobal").onclick = () => { hideTip(); goWorld(); };
+$("#cCountry").onclick = () => { hideTip(); if (S.c) goCountry(S.c); };
+$("#cState").onclick = () => { hideTip(); if (S.st) goState(S.st); };
+$("#cGlobal").title = "Open the world view"; $("#cCountry").title = "Open the country view"; $("#cState").title = "Open the state view";
+
+Promise.all([
+  d3.json("points.json"), d3.json("data/precision.json"), d3.json("dash.json"),
+  d3.json("data/countries-50m.json"),
+  d3.json("data/states-10m.json"),
+]).then(([pts, prec, dash, world, us]) => {
+  PTS = pts.map(([op, region, lon, lat, qc, img, nponds, feat]) => ({ op, region, c: countryOf(region), lon, lat, qc, img: !!img, nponds, feat }));
+  PREC = prec.scopes || {}; DASH = dash; WORLD = world;
+  LAND = topojson.feature(world, world.objects.countries);
+  STATES = topojson.feature(us, us.objects.states).features.filter((f) => !["02", "15", "72", "60", "66", "69", "78"].includes(f.id));
+  ACTIVE = new Set(PTS.filter((p) => p.img).map((p) => p.c));
+  FEAT = Object.fromEntries([...ACTIVE].map((c) => [c, LAND.features.find((x) => x.id === COUNTRIES[c].id)]));
+  FEATG = Object.fromEntries(Object.entries(FEAT).map(([c, f]) => [c, globeSimplify(f)]));
+  $("#loading").style.opacity = 0; setTimeout(() => $("#loading").remove(), 400);
+  route();
+}).catch((e) => { $("#loading").textContent = "Could not load data: " + e; });
+
+// ======================================================================= routing
+function setHash() {
+  const q = new URLSearchParams();
+  if (S.c) q.set("c", S.c); if (S.st) q.set("s", S.st); if (S.op) q.set("op", S.op);
+  const h = q.toString();
+  if (location.hash.slice(1) !== h) history.pushState(null, "", h ? "#" + h : location.pathname);
+}
+function route() {
+  const q = new URLSearchParams(location.hash.slice(1)), c = q.get("c"), st = q.get("s"), op = q.get("op");
+  if (op && PTS.find((p) => p.op === op && p.img)) goFarm(op, false);
+  else if (c === "USA" && st && shown("USA", st).length) goState(st, false);
+  else if (c && ACTIVE.has(c)) goCountry(c, false);
+  else goWorld(false);
+}
+addEventListener("popstate", route);
+function setLevel(v) {
+  S.view = v; hideTip(); stopPlay();
+  document.body.classList.toggle("world", v === "world");
+  document.body.classList.toggle("globe", USE_GLOBE && v === "world");
+  document.body.classList.toggle("tilt", v === "country" || v === "state");   // slight 3D at country and state, flat at farm
+  showCard($("#cGlobal"), v !== "world", true);
+  showCard($("#cCountry"), v === "state" || v === "farm", true);   // a small card appears only once you go below its level
+  showCard($("#cState"), v === "farm", true);
+  $("#mid").hidden = $("#time").hidden = v !== "farm";
+  $("#step").hidden = v !== "farm";
+  document.body.classList.toggle("farm", v === "farm");
+  MAP.removeLayer(REF);
+  CTX.clearLayers(); FARM.clearLayers();
+  PLAB.clearLayers(); F.labs = null; $("#leg").hidden = v !== "farm";
+  crumbs(); drawGlobalCard(); if (S.c) drawCountryCard(); if (v === "farm") drawStateCard();
+}
+const lcolDone = () => { if (![...document.querySelectorAll("#lcol .lcard")].some((c) => c._anim)) $("#lcol").classList.remove("anim"); };
+function showCard(el, on, fromMap) {   // fromMap: the card grows out of / back into the full-screen map
+  if (el._anim) { el._anim.cancel(); el._anim = null; lcolDone(); }
+  if (on === !el.hidden) return;
+  const big = () => { const r = el.getBoundingClientRect();
+    return `translate(${innerWidth / 2 - r.left - r.width / 2}px,${innerHeight / 2 - r.top - r.height / 2}px) scale(${innerWidth / r.width})`; };
+  if (on) {
+    el.hidden = false;
+    const k = fromMap ? [{ transform: big(), opacity: 0 }, { opacity: .55, offset: .3 }, { transform: "none", opacity: 1 }]
+      : [{ transform: "translateX(-28px)", opacity: 0 }, { transform: "none", opacity: 1 }];
+    if (fromMap) $("#lcol").classList.add("anim");
+    el._anim = el.animate(k, { duration: fromMap ? 1050 : 450, delay: fromMap ? 0 : 250, fill: "backwards", easing: "cubic-bezier(.2,.75,.2,1)" });
+    el._anim.onfinish = () => { el._anim = null; lcolDone(); };
+  } else if (fromMap) {
+    $("#lcol").classList.add("anim");
+    el._anim = el.animate([{ transform: "none", opacity: 1 }, { transform: big(), opacity: 0 }], { duration: 650, easing: "cubic-bezier(.5,0,.75,0)" });
+    el._anim.onfinish = () => { el.hidden = true; el._anim = null; lcolDone(); };
+  } else el.hidden = true;
+}
+function crumbs() {   // World > country menu > state menu > farm ID (type to filter)
+  const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? " selected" : ""}>${esc(label)}</option>`;
+  const parts = [S.view === "world" ? "<b>World</b>" : `<a data-go="world">World</a>`, "›"];
+  parts.push(`${S.c ? flagImg(S.c) : ""}<select id="selC" title="Country">${!S.c ? opt("", "Country…", true) : S.view !== "country" ? opt("^", `‹ ${COUNTRIES[S.c].name} overview`) : ""}` +
+    [...ACTIVE].sort((a, b) => COUNTRIES[a].name.localeCompare(COUNTRIES[b].name)).map((c) => opt(c, COUNTRIES[c].name, c === S.c)).join("") + `</select>`);
+  if (S.c === "USA") {
+    const sts = [...new Set(shown("USA").map((p) => p.region.split("/")[1]))].sort();
+    parts.push("›", `<select id="selS" title="State">${!S.st ? opt("", "State…", true) : S.view !== "state" ? opt("^", `‹ ${titleCase(S.st)} overview`) : ""}` +
+      sts.map((s2) => opt(s2, titleCase(s2), s2 === S.st)).join("") + `</select>`);
+  }
+  const ids = PTS.filter((p) => p.img).sort((a, b) => ((b.c === S.c) - (a.c === S.c)) || a.op.localeCompare(b.op));
+  parts.push("›", `<input id="selF" list="farmIds" placeholder="Farm ID…" value="${esc(S.op || "")}" spellcheck="false" autocomplete="off" title="Type or pick a farm ID">` +
+    `<datalist id="farmIds">${ids.map((p) => `<option value="${esc(p.op)}">${esc(human(p.region))}</option>`).join("")}</datalist>`);
+  $("#crumbs").innerHTML = parts.join(" ");
+  $("#crumbs").querySelectorAll("a").forEach((a) => a.onclick = () => goWorld());
+  $("#selC").onchange = (e) => { const v = e.target.value; if (v === "^") goCountry(S.c); else if (v) goCountry(v); };
+  const ss = $("#selS"); if (ss) ss.onchange = (e) => { const v = e.target.value; if (v === "^") goState(S.st); else if (v) goState(v); };
+  const f = $("#selF"), pick = () => { const v = f.value.trim(); if (v && v !== S.op && PTS.some((p) => p.op === v && p.img)) goFarm(v); };
+  f.oninput = pick; f.onchange = pick; f.onkeydown = (e) => { if (e.key === "Enter") { const v = f.value.trim().toLowerCase(), m = ids.find((p) => p.op.toLowerCase().includes(v)); if (m) goFarm(m.op); } };
+  f.onfocus = () => f.select();
+}
+
+// ======================================================================= left location cards
+function cardSvg(sel, h) { const svg = d3.select(sel); svg.selectAll("*").remove(); const W = 270; svg.attr("viewBox", `0 0 ${W} ${h}`); return [svg, W, h]; }
+function drawGlobalCard() {
+  const [svg, W, H] = cardSvg("#gsvg", 140);
+  const proj = d3.geoNaturalEarth1().fitExtent([[2, 2], [W - 2, H - 2]], { type: "MultiPoint", coordinates: d3.range(-180, 181, 20).flatMap((x) => [[x, -55], [x, 78]]) });
+  const path = d3.geoPath(proj);
+  svg.append("g").selectAll("path").data(LAND.features).join("path").attr("d", path)
+    .attr("class", (d) => ACTIVE.has(BY_ID[d.id]) ? "hit" : "")
+    .attr("fill", (d) => BY_ID[d.id] === S.c ? COUNTRIES[S.c].col : ACTIVE.has(BY_ID[d.id]) ? d3.color(COUNTRIES[BY_ID[d.id]].col).copy({ opacity: .55 }) : "rgba(255,255,255,.16)")
+    .attr("stroke", (d) => BY_ID[d.id] === S.c ? "#fff" : "rgba(255,255,255,.25)").attr("stroke-width", (d) => BY_ID[d.id] === S.c ? 1.2 : .3)
+    .on("click", (e, d) => { if (ACTIVE.has(BY_ID[d.id])) { e.stopPropagation(); goCountry(BY_ID[d.id]); } })
+    .on("mousemove", (e, d) => { if (ACTIVE.has(BY_ID[d.id])) showTip(`<b>${COUNTRIES[BY_ID[d.id]].name}</b><div class="m">${shown(BY_ID[d.id]).length} farms · click to open</div>`, e); })
+    .on("mouseleave", hideTip);
+  if (S.c) { const f = LAND.features.find((x) => x.id === COUNTRIES[S.c].id), [x, y] = path.centroid(f);
+    svg.append("text").attr("x", Math.min(W - 40, x + 8)).attr("y", y - 6).attr("font-size", 11).attr("font-weight", 700).attr("fill", "#fff").attr("paint-order", "stroke").attr("stroke", "rgba(0,0,0,.7)").attr("stroke-width", 3).text(S.c); }
+  $("#gSub").textContent = `${PTS.filter((p) => p.img).length} farms · ${ACTIVE.size} countries`;
+}
+function drawCountryCard() {
+  const c = S.c, [svg, W, H] = cardSvg("#csvg", 170), f = LAND.features.find((x) => x.id === COUNTRIES[c].id);
+  $("#cTitle").innerHTML = `${flagImg(c)} ${COUNTRIES[c].name}<span>${shown(c).length} farms</span>`;
+  if (c === "USA") {   // the country only (no neighbours), with the project states highlighted and labelled
+    const ours = new Set(Object.keys(PREC).filter((k) => k.startsWith("USA/")).map((k) => k.slice(4)));
+    const proj = d3.geoAlbersUsa().fitExtent([[4, 4], [W - 4, H - 4]], { type: "FeatureCollection", features: STATES }), path = d3.geoPath(proj);
+    svg.append("g").selectAll("path").data(STATES).join("path").attr("d", path)
+      .attr("class", (d) => ours.has(stKey(d.properties.name)) && shown("USA", stKey(d.properties.name)).length ? "hit" : "")
+      .attr("fill", (d) => stKey(d.properties.name) === S.st ? COUNTRIES.USA.col : ours.has(stKey(d.properties.name)) ? "rgba(91,141,239,.45)" : "rgba(255,255,255,.12)")
+      .attr("stroke", "rgba(255,255,255,.35)").attr("stroke-width", .5)
+      .on("click", (e, d) => { const k = stKey(d.properties.name); if (shown("USA", k).length) { e.stopPropagation(); goState(k); } })
+      .on("mousemove", (e, d) => { const k = stKey(d.properties.name); if (ours.has(k)) showTip(`<b>${d.properties.name}</b><div class="m">${shown("USA", k).length} farms with history${PREC["USA/" + k] ? " · precision " + Math.round(PREC["USA/" + k].operation.precision * 100) + "%" : ""}</div>`, e); })
+      .on("mouseleave", hideTip);
+    STATES.filter((d) => ours.has(stKey(d.properties.name))).forEach((d) => {
+      const [x, y] = path.centroid(d), sel = stKey(d.properties.name) === S.st;
+      svg.append("text").attr("x", x).attr("y", y + 3).attr("text-anchor", "middle").attr("font-size", sel ? 10.5 : 9).attr("font-weight", sel ? 800 : 600)
+        .attr("fill", "#fff").attr("paint-order", "stroke").attr("stroke", "rgba(0,0,0,.75)").attr("stroke-width", 2.5).attr("pointer-events", "none")
+        .text(ABBR[stKey(d.properties.name)] || d.properties.name);
+    });
+  } else {   // non-US: the country shape only, with its farms
+    const proj = d3.geoMercator().fitExtent([[6, 6], [W - 6, H - 6]], f), path = d3.geoPath(proj);
+    svg.append("path").datum(f).attr("d", path).attr("fill", d3.color(COUNTRIES[c].col).copy({ opacity: .25 })).attr("stroke", COUNTRIES[c].col).attr("stroke-width", 1.2);
+    shown(c).forEach((p) => { const xy = proj([p.lon, p.lat]); if (!xy) return;
+      svg.append("circle").attr("class", "pinmini").attr("cx", xy[0]).attr("cy", xy[1]).attr("r", p.op === S.op ? 5 : 2.6)
+        .attr("fill", p.op === S.op ? "#ec8454" : qcCol(p.qc)).attr("stroke", "#fff").attr("stroke-width", p.op === S.op ? 1.5 : .6)
+        .on("click", (e) => { e.stopPropagation(); goFarm(p.op); }).on("mousemove", (e) => showTip(`<b>${esc(p.op)}</b>`, e)).on("mouseleave", hideTip); });
+  }
+}
+function drawStateCard() {   // US state (or the farm's neighbourhood elsewhere) with 3D-style pins
+  const [svg, W, H] = cardSvg("#ssvg", 190), p = S.op ? PTS.find((x) => x.op === S.op) : null;
+  svg.append("defs").html('<radialGradient id="pg" cx="35%" cy="25%" r="80%"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#eef1f4"/><stop offset="1" stop-color="#b8c1ca"/></radialGradient>' +
+    '<filter id="ps" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-opacity=".5"/></filter>');
+  let proj, farms;
+  if (S.st) {
+    const sf = STATES.find((d) => stKey(d.properties.name) === S.st);
+    proj = d3.geoMercator().fitExtent([[10, 26], [W - 10, H - 8]], sf);
+    svg.append("path").datum(sf).attr("d", d3.geoPath(proj)).attr("fill", "rgba(59,123,224,.16)").attr("stroke", COUNTRIES.USA.col).attr("stroke-width", 1.4);
+    farms = shown("USA", S.st);
+    $("#sTitle").innerHTML = `${esc(titleCase(S.st))}<span>${farms.length} farms${PREC["USA/" + S.st] ? " · " + Math.round(PREC["USA/" + S.st].operation.precision * 100) + "% precision" : ""}</span>`;
+  } else {
+    const f = LAND.features.find((x) => x.id === COUNTRIES[S.c].id), d = 1.6;
+    const box = { type: "MultiPoint", coordinates: [[p.lon - d, p.lat - d * .7], [p.lon + d, p.lat + d * .7]] };
+    proj = d3.geoMercator().fitExtent([[10, 26], [W - 10, H - 8]], box);
+    svg.append("clipPath").attr("id", "sclip").append("rect").attr("width", W).attr("height", H);
+    svg.append("path").datum(f).attr("clip-path", "url(#sclip)").attr("d", d3.geoPath(proj)).attr("fill", d3.color(COUNTRIES[S.c].col).copy({ opacity: .16 })).attr("stroke", COUNTRIES[S.c].col).attr("stroke-width", 1.2);
+    farms = shown(S.c).filter((q) => Math.abs(q.lon - p.lon) < d * 1.1 && Math.abs(q.lat - p.lat) < d);
+    $("#sTitle").innerHTML = `Around this farm<span>${farms.length} farms nearby</span>`;
+  }
+  farms.sort((a, b) => (a.op === S.op) - (b.op === S.op)).forEach((q) => {
+    const xy = proj([q.lon, q.lat]); if (!xy) return;
+    const cur = q.op === S.op, g = svg.append("g").attr("class", "pinmini").attr("transform", `translate(${xy[0]},${xy[1]}) scale(${cur ? 1 : .62})`).attr("filter", "url(#ps)")
+      .on("click", (e) => { e.stopPropagation(); goFarm(q.op); }).on("mousemove", (e) => showTip(`<b>${esc(q.op)}</b><div class="m">QC ${esc(q.qc || "–")}</div>`, e)).on("mouseleave", hideTip);
+    g.append("ellipse").attr("cy", 1).attr("rx", 6).attr("ry", 2).attr("fill", "rgba(0,0,0,.45)");
+    g.append("path").attr("d", "M0,0 C-2,-6 -11,-11 -11,-20 A11,11 0 1 1 11,-20 C11,-11 2,-6 0,0Z").attr("fill", cur ? "#ec8454" : "url(#pg)").attr("stroke", cur ? "#fff" : qcCol(q.qc)).attr("stroke-width", 2);
+    g.append("text").attr("text-anchor", "middle").attr("y", -16).attr("font-size", 11).text("🐄");
+  });
+}
+
+// ======================================================================= levels on the background map
+function goWorld(push = true) {
+  S.c = S.st = S.op = null; setLevel("world");
+  if (USE_GLOBE) { MAP.setView([30, 20], 2.5, { animate: false }); globeTick(); }   // hidden behind the globe; a country flies in from here
+  else worldFlat();
+  rcolWorld(); if (push) setHash();
+}
+function unwrapLon(f) {   // shapes crossing the date line (Aleutians, Chukotka) drawn on one side, not as stripes across the map
+  const g = f.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  if (!polys.some((pl) => pl.some((r) => d3.max(r, (p) => p[0]) - d3.min(r, (p) => p[0]) > 180))) return f;
+  const east = d3.geoCentroid(f)[0] > 0, fix = (r) => r.map(([x, y]) => [east && x < 0 ? x + 360 : !east && x > 0 ? x - 360 : x, y]);
+  return { type: "Feature", geometry: { type: "MultiPolygon", coordinates: polys.map((pl) => pl.map(fix)) } };
+}
+function worldFlat() {   // flat world: every country on the imagery, project countries tinted and clickable
+  [...ACTIVE].forEach((c) => { const col = COUNTRIES[c].col, base = { color: col, weight: 1.8, fillColor: col, fillOpacity: .28 };
+    const lay = L.geoJSON(unwrapLon(FEAT[c]), { style: base });
+    hoverable(lay, base, { weight: 3, fillOpacity: .5 }).on("click", () => goCountry(c))
+      .bindTooltip(`${COUNTRIES[c].name} · ${shown(c).length} farms · click to open`, { sticky: true }).addTo(CTX);
+    const lp = labPoint(c);
+    L.marker([lp[1], lp[0]], { interactive: false, icon: L.divIcon({ className: "", iconSize: null, html: `<div class="slabel">${COUNTRIES[c].name}</div>` }) }).addTo(CTX); });
+  MAP.flyTo([34, innerWidth > 900 ? 72 : 15], innerWidth > 900 ? 2.25 : 1.5, { duration: .9 });   // whole world in the space left of the side panel; fills top to bottom
+}
+function farmPins(list) {
+  list.forEach((p) => L.marker([p.lat, p.lon], { icon: pinIcon(qcCol(p.qc)), riseOnHover: true })
+    .bindTooltip(`${p.op} · QC ${p.qc || "–"} · ${p.nponds ?? 0} pond(s)`, { direction: "top", offset: [0, -46] }).on("click", () => goFarm(p.op)).addTo(CTX));
+}
+function goCountry(c, push = true) {
+  S.c = c; S.st = S.op = null; setLevel("country");
+  const f = LAND.features.find((x) => x.id === COUNTRIES[c].id), col = COUNTRIES[c].col;
+  clipTo(f); L.geoJSON(f, { interactive: false, style: { color: col, weight: 2.5, fill: false } }).addTo(CTX);   // this country only, no neighbours
+  if (c === "USA") {
+    const ours = new Set(Object.keys(PREC).filter((k) => k.startsWith("USA/")).map((k) => k.slice(4)));
+    STATES.filter((d) => ours.has(stKey(d.properties.name))).forEach((d) => {
+      const k = stKey(d.properties.name), n = shown("USA", k).length, o = PREC["USA/" + k]?.operation;
+      const base = { color: "#fff", weight: 1.5, fillColor: col, fillOpacity: n ? .25 : .1 };
+      const lay = L.geoJSON(d, { style: base, interactive: !!n });
+      if (n) hoverable(lay, base, { weight: 3, fillOpacity: .5 }).on("click", () => goState(k)).bindTooltip(`${d.properties.name} · click to open`, { direction: "center" });
+      lay.addTo(CTX);
+      const ctr = d3.geoCentroid(d);
+      L.marker([ctr[1], ctr[0]], { interactive: false, icon: L.divIcon({ className: "", iconSize: null,
+        html: `<div class="slabel">${ABBR[k] || d.properties.name}</div>` }) }).addTo(CTX);
+    });
+    fly(LOWER48, 5);
+  } else {
+    farmPins(shown(c));
+    const lp = labPoint(c);
+    L.marker([lp[1], lp[0]], { interactive: false, icon: L.divIcon({ className: "", iconSize: null, html: `<div class="slabel">${c}</div>` }) }).addTo(CTX);
+    const ll = shown(c).map((p) => [p.lat, p.lon]);
+    fly(L.latLngBounds(ll).pad(.15), 7);
+  }
+  rcolCountry(c); if (push) setHash();
+}
+function goState(st, push = true) {
+  S.c = "USA"; S.st = st; S.op = null; setLevel("state");
+  const d = STATES.find((x) => stKey(x.properties.name) === st);
+  clipTo(d); const lay = L.geoJSON(d, { interactive: false, style: { color: "#fff", weight: 2.5, fillColor: COUNTRIES.USA.col, fillOpacity: .08 } }).addTo(CTX);
+  farmPins(shown("USA", st));
+  fly(lay.getBounds().pad(.05), 9);
+  rcolState(st); if (push) setHash();
+}
+
+// ======================================================================= world level: satellite globe
+let FEATG = {}, GRAT = null;   // country outlines simplified for the globe (drawn every frame); FEAT keeps full detail for hit tests
+function globeSimplify(f, tol = .18, minSpan = .6) {   // drop vertices closer than tol deg, and islands smaller than minSpan deg
+  const ring = (r) => { const o = [r[0]]; for (let i = 1; i < r.length - 1; i++) { const q = o[o.length - 1]; if (Math.abs(r[i][0] - q[0]) + Math.abs(r[i][1] - q[1]) > tol) o.push(r[i]); } o.push(r[r.length - 1]); return o; };
+  const span = (r) => { const xs = r.map((p) => p[0]), ys = r.map((p) => p[1]); return Math.max(d3.max(xs) - d3.min(xs), d3.max(ys) - d3.min(ys)); };
+  const g = f.geometry, polys = (g.type === "Polygon" ? [g.coordinates] : g.coordinates).filter((pl) => span(pl[0]) >= minSpan).map((pl) => pl.map(ring).filter((r) => r.length >= 4));
+  return { type: "Feature", geometry: { type: "MultiPolygon", coordinates: polys.length ? polys : (g.type === "Polygon" ? [g.coordinates] : g.coordinates) } };
+}
+const GL = { spin: 0, vel: 0, last: 0, gl: null, lon: -96, lat: 34, r: 300, cx: 0, cy: 0, dpr: 1, zoom: 1.05, zoom0: 1.05, px: null, D: 0, disc: null, out: null, oc: null, raf: 0, drag: null, hover: null, leaving: false };
+function labPoint(c) {
+  if (LAB[c]) return LAB[c];
+  const g = (FEAT[c] || LAND.features.find((x) => x.id === COUNTRIES[c].id)).geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  const area = (pl) => d3.geoArea({ type: "Polygon", coordinates: pl });
+  return (LAB[c] = d3.geoCentroid({ type: "Polygon", coordinates: polys.reduce((a, b) => area(b) > area(a) ? b : a) }));   // cached: was recomputed every frame
+}
+(function () {   // Sentinel-2 world mosaic (Web Mercator, +-85.05 deg) as a pixel source
+  const im = new Image();
+  im.onload = () => { glTexture(im); const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const x = c.getContext("2d"); x.drawImage(im, 0, 0);
+    GL.px = x.getImageData(0, 0, im.width, im.height); GL.iw = im.width; GL.ih = im.height; };
+  im.src = "bg/world.jpg";
+})();
+// GPU path: one fragment shader does the inverse orthographic + Mercator lookup for every screen pixel
+const GLSL_V = "attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}";
+const GLSL_F = `precision highp float;uniform sampler2D tex;uniform vec2 c;uniform float r,lon0,sp,cp,dpr,h;
+void main(){vec2 p=gl_FragCoord.xy/dpr;float x=(p.x-c.x)/r,y=(p.y-(h-c.y))/r,rr=x*x+y*y;if(rr>1.){gl_FragColor=vec4(0.);return;}
+float z=sqrt(1.-rr),sl=clamp(z*sp+y*cp,-.99627,.99627),lon=lon0+atan(x,z*cp-y*sp);
+vec2 uv=vec2(fract(lon/6.2831853+.5),.5-log((1.+sl)/(1.-sl))/12.5663706);
+float a=clamp((1.-sqrt(rr))*r*dpr,0.,1.);gl_FragColor=vec4(texture2D(tex,uv).rgb*(.42+.58*z)*a,a);}`;
+(function () {
+  try {
+    const gl = $("#globegl").getContext("webgl", { premultipliedAlpha: true, antialias: false }); if (!gl) return;
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s); return s; };
+    const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, GLSL_V)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, GLSL_F)); gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw gl.getProgramInfoLog(pr);
+    gl.useProgram(pr); gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const a = gl.getAttribLocation(pr, "a"); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+    GL.gl = gl; GL.u = Object.fromEntries(["tex", "c", "r", "lon0", "sp", "cp", "dpr", "h"].map((k) => [k, gl.getUniformLocation(pr, k)]));
+  } catch (err) { console.warn("WebGL globe unavailable, using the CPU globe", err); GL.gl = null; }
+})();
+function glTexture(im) {
+  const gl = GL.gl; if (!gl) return;
+  const tx = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tx);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, im);
+  const pot = (n) => (n & (n - 1)) === 0, rep2 = pot(im.width) && pot(im.height);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, rep2 ? gl.REPEAT : gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  GL.tex = tx;
+}
+function glDraw() {
+  const gl = GL.gl, R = Math.PI / 180, cv = $("#globegl");
+  gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  if (!GL.tex) return false;
+  gl.uniform1i(GL.u.tex, 0); gl.uniform2f(GL.u.c, GL.cx, GL.cy); gl.uniform1f(GL.u.r, GL.r * GL.zoom); gl.uniform1f(GL.u.lon0, GL.lon * R);
+  gl.uniform1f(GL.u.sp, Math.sin(GL.lat * R)); gl.uniform1f(GL.u.cp, Math.cos(GL.lat * R)); gl.uniform1f(GL.u.dpr, GL.dpr); gl.uniform1f(GL.u.h, innerHeight);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); return true;
+}
+function globeSize() {
+  const cv = $("#globe"); GL.dpr = Math.min(devicePixelRatio || 1, 1.5);
+  for (const c of [cv, $("#globegl")]) { c.width = innerWidth * GL.dpr; c.height = innerHeight * GL.dpr; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; }
+  const right = innerWidth > 900 ? 400 : 0;
+  GL.cx = (innerWidth - right) / 2 + 6; GL.cy = (innerHeight + 52) / 2;
+  GL.r = Math.max(110, Math.min((innerWidth - right - 40) / 2, (innerHeight - 110) / 2));
+  if (GL.gl) return;
+  const D = GL.D = Math.min(720, Math.round(2 * GL.r * GL.dpr * .75));   // imagery resolution, drawn scaled up
+  GL.disc = new Float32Array(D * D * 3).fill(NaN);
+  for (let j = 0; j < D; j++) for (let i = 0; i < D; i++) {
+    const x = (i + .5) / D * 2 - 1, y = 1 - (j + .5) / D * 2, rr = x * x + y * y;
+    if (rr <= 1) { const k = (j * D + i) * 3; GL.disc[k] = x; GL.disc[k + 1] = y; GL.disc[k + 2] = Math.sqrt(1 - rr); }
+  }
+  GL.oc = document.createElement("canvas"); GL.oc.width = GL.oc.height = D; GL.out = GL.oc.getContext("2d").createImageData(D, D);
+}
+function globeImagery() {   // inverse orthographic per pixel -> Mercator source pixel, with sphere shading
+  const D = GL.D, d = GL.disc, o = GL.out.data, s = GL.px.data, W = GL.iw, H = GL.ih, R = Math.PI / 180;
+  const l0 = GL.lon * R, sp = Math.sin(GL.lat * R), cp = Math.cos(GL.lat * R), M = Math.sin(85.05 * R);
+  for (let p = 0, k = 0; p < D * D; p++, k += 3) {
+    const x = d[k], q = p * 4;
+    if (x !== x) { o[q + 3] = 0; continue; }
+    const y = d[k + 1], z = d[k + 2];
+    let sl = z * sp + y * cp; sl = sl > M ? M : sl < -M ? -M : sl;
+    const lon = l0 + Math.atan2(x, z * cp - y * sp), u = ((lon / (2 * Math.PI) + .5) % 1 + 1) % 1;
+    const v = .5 - Math.log((1 + sl) / (1 - sl)) / (4 * Math.PI);
+    const si = (Math.min(H - 1, v * H | 0) * W + Math.min(W - 1, u * W | 0)) * 4, sh = .42 + .58 * z;
+    o[q] = s[si] * sh; o[q + 1] = s[si + 1] * sh; o[q + 2] = s[si + 2] * sh; o[q + 3] = 255;
+  }
+  GL.oc.getContext("2d").putImageData(GL.out, 0, 0);
+}
+const globeProj = (prec = .4) => d3.geoOrthographic().rotate([-GL.lon, -GL.lat]).translate([GL.cx, GL.cy]).scale(GL.r * GL.zoom).clipAngle(90).precision(prec);
+function globeDeco(r) {   // static glow and shading as cached bitmaps (gradients are the costliest part of a frame)
+  const key = Math.round(r) + "@" + GL.dpr; if (GL.deco && GL.deco.key === key) return GL.deco;
+  const mk = (w, f) => { const c = document.createElement("canvas"); c.width = c.height = Math.ceil(w * GL.dpr); const x = c.getContext("2d"); x.scale(GL.dpr, GL.dpr); f(x); return c; };
+  const R2 = r * 1.14, atm = mk(2 * R2, (x) => { const g = x.createRadialGradient(R2, R2, r * .97, R2, R2, R2);
+    g.addColorStop(0, "rgba(110,165,255,.42)"); g.addColorStop(1, "rgba(110,165,255,0)");
+    x.fillStyle = g; x.beginPath(); x.arc(R2, R2, R2, 0, 2 * Math.PI); x.moveTo(R2 + r - .5, R2); x.arc(R2, R2, r - .5, 0, 2 * Math.PI, true); x.fill(); });
+  const shade = mk(2 * r, (x) => { const g = x.createRadialGradient(r * .65, r * .6, r * .1, r, r, r);
+    g.addColorStop(0, "rgba(255,255,255,.08)"); g.addColorStop(.7, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,.5)");
+    x.fillStyle = g; x.beginPath(); x.arc(r, r, r, 0, 2 * Math.PI); x.fill(); });
+  return (GL.deco = { key, atm, shade });
+}
+function globeDraw() {
+  const ctx = $("#globe").getContext("2d"), r = GL.r * GL.zoom, P = globeProj(1.2), path = d3.geoPath(P, ctx), disc = () => { ctx.beginPath(); ctx.arc(GL.cx, GL.cy, r, 0, 7); };
+  ctx.setTransform(GL.dpr, 0, 0, GL.dpr, 0, 0); ctx.clearRect(0, 0, innerWidth, innerHeight);
+  const dc = globeDeco(r), R2 = r * 1.14;
+  ctx.drawImage(dc.atm, GL.cx - R2, GL.cy - R2, 2 * R2, 2 * R2);   // atmosphere ring, rendered once per size
+  if (GL.gl && glDraw()) { /* imagery drawn by the GPU canvas underneath */ }
+  else if (GL.px) { globeImagery(); ctx.save(); disc(); ctx.clip(); ctx.imageSmoothingQuality = "high"; ctx.drawImage(GL.oc, GL.cx - r, GL.cy - r, 2 * r, 2 * r); ctx.restore(); }
+  else if (!GL.gl) { ctx.fillStyle = "#16324a"; disc(); ctx.fill(); }
+  ctx.beginPath(); path(GRAT || (GRAT = d3.geoGraticule10())); ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = .6; ctx.stroke();
+  [...ACTIVE].forEach((c) => { const col = COUNTRIES[c].col, on = GL.hover === c;   // the whole country is the button
+    ctx.beginPath(); path(FEATG[c] || FEAT[c]); ctx.fillStyle = d3.color(col).copy({ opacity: on ? .55 : .26 }) + ""; ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = on ? 2.8 : 1.7; ctx.stroke(); });
+  ctx.drawImage(dc.shade, GL.cx - r, GL.cy - r, 2 * r, 2 * r);   // sphere shading, rendered once per size
+  ctx.font = "800 18px Archivo, 'Arial Narrow', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.letterSpacing = "1px";
+  [...ACTIVE].forEach((c) => { const pt = labPoint(c); if (d3.geoDistance(pt, [GL.lon, GL.lat]) > 1.4) return;
+    const [x, y] = P(pt); ctx.lineJoin = "round"; ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.strokeText(c, x, y); ctx.fillStyle = "#fff"; ctx.fillText(c, x, y); });
+}
+function globeTick() {
+  cancelAnimationFrame(GL.raf);
+  GL.last = performance.now();
+  const step = (now) => { if (S.view !== "world" && !GL.leaving) return;
+    const dt = Math.min(50, now - GL.last); GL.last = now;
+    const want = GL.drag || GL.hover || GL.leaving || /still/.test(location.search) ? 0 : .0045;   // deg per ms
+    GL.spin += (want - GL.spin) * Math.min(1, dt / 400);
+    if (!GL.drag && !GL.leaving) { GL.lon += (GL.spin + GL.vel) * dt; GL.vel *= Math.pow(.996, dt); }
+    globeDraw(); GL.raf = requestAnimationFrame(step); };
+  GL.raf = requestAnimationFrame(step);
+}
+function globeHit(e) {
+  if (Math.hypot(e.clientX - GL.cx, e.clientY - GL.cy) > GL.r * GL.zoom) return null;
+  const ll = globeProj().invert([e.clientX, e.clientY]);
+  return ll ? [...ACTIVE].find((c) => d3.geoContains(FEAT[c], ll)) || null : null;
+}
+function globeEnter(c) {   // spin to the country and zoom in, then hand over to the map
+  hideTip(); GL.leaving = true;
+  const [lon, lat] = labPoint(c), l0 = GL.lon, a0 = GL.lat, z0 = GL.zoom, dl = ((lon - l0) % 360 + 540) % 360 - 180, t0 = performance.now();
+  const anim = (now) => { const k = Math.min(1, (now - t0) / 800), e = d3.easeCubicInOut(k);
+    GL.lon = l0 + dl * e; GL.lat = a0 + (lat - a0) * e; GL.zoom = z0 + (Math.max(3.4, z0 * 1.6) - z0) * e;
+    if (k < 1) requestAnimationFrame(anim); else { GL.leaving = false; goCountry(c); setTimeout(() => { GL.zoom = GL.zoom0; }, 800); } };
+  requestAnimationFrame(anim);
+}
+(function () {
+  const cv = $("#globe");
+  globeSize(); addEventListener("resize", globeSize);
+  cv.addEventListener("pointerdown", (e) => { GL.vel = 0; GL.drag = { x: e.clientX, y: e.clientY, lon: GL.lon, lat: GL.lat, moved: 0, px: e.clientX, pt: performance.now(), v: 0 }; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; });
+  cv.addEventListener("pointermove", (e) => {
+    if (GL.drag) { const k = 180 / Math.PI / (GL.r * GL.zoom), dx = e.clientX - GL.drag.x, dy = e.clientY - GL.drag.y;
+      GL.drag.moved = Math.max(GL.drag.moved, Math.abs(dx) + Math.abs(dy));
+      const now = performance.now(), ddt = now - GL.drag.pt; if (ddt > 0) { GL.drag.v = .7 * GL.drag.v + .3 * (-(e.clientX - GL.drag.px) * k / ddt); GL.drag.px = e.clientX; GL.drag.pt = now; }
+      GL.lon = GL.drag.lon - dx * k; GL.lat = Math.max(-70, Math.min(70, GL.drag.lat + dy * k)); hideTip(); return; }
+    const c = globeHit(e); GL.hover = c; cv.style.cursor = c ? "pointer" : "grab";
+    if (c) showTip(`<b>${COUNTRIES[c].name}</b><div class="m">click to open</div>`, e); else hideTip();
+  });
+  cv.addEventListener("pointerup", (e) => { const d = GL.drag; GL.drag = null; cv.style.cursor = "grab"; if (d && d.moved >= 5) GL.vel = Math.max(-.12, Math.min(.12, d.v)); if (d && d.moved < 5) { const c = globeHit(e); if (c) globeEnter(c); } });
+  cv.addEventListener("pointerleave", () => { GL.hover = null; hideTip(); });
+  cv.addEventListener("wheel", (e) => { e.preventDefault(); GL.zoom = Math.max(.8, Math.min(4, GL.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08))); }, { passive: false });
+})();
+
+// ======================================================================= farm
+async function goFarm(op, push = true) {
+  const p = PTS.find((x) => x.op === op);
+  S.c = p.c; S.st = p.c === "USA" ? p.region.split("/")[1] : null; S.op = op; setLevel("farm");
+  if (push) setHash();
+  $("#rcol").innerHTML = ""; $("#thumbs").innerHTML = "";
+  const list = (S.st ? shown("USA", S.st) : shown(p.c)).sort((a, b) => (b.nponds || 0) - (a.nponds || 0) || a.op.localeCompare(b.op)), i = list.findIndex((x) => x.op === op);
+  $("#fpos").textContent = `${i + 1} / ${list.length}`;
+  $("#fprev").onclick = () => goFarm(list[(i - 1 + list.length) % list.length].op);
+  $("#fnext").onclick = () => goFarm(list[(i + 1) % list.length].op);
+  const FJ = await (await fetch(`farms/${op}.json`)).json();
+  if (S.op !== op) return;
+  const d = FJ.op; IMG = FJ.img || {}; SPEC = FJ.spectra || [];
+  let ponds = FJ.ponds || [];
+  const series = Object.fromEntries((d.history.series || []).map((s) => [s.id, s.points]));
+  const evBy = Object.fromEntries((d.history.events || []).map((e) => [e.pond_id, e]));
+  F.data = d; F.years = (d.history.years || []).filter((y) => y.has_tci || y.has_bsi);
+  F.ponds = ponds.sort((a, b) => a.properties.pond_id.localeCompare(b.properties.pond_id)).map((f, k) => {
+    const id = f.properties.pond_id, ev = evBy[id];
+    return { id, n: k + 1, f, col: POND_COL[k % POND_COL.length], area: Object.fromEntries((series[id] || []).map((q) => [q.year, q.area])),
+      status: ev ? (STATUS[ev.candidate] ? ev.candidate : "mixed") : "stable", ev };
+  });
+  F.yi = Math.max(0, F.years.length - 1);
+  F.zoom = "farm"; document.querySelectorAll("#zoomseg button").forEach((x) => x.classList.toggle("on", x.dataset.z === "farm"));
+  zoomFarm(); drawThumbs(); renderFrame(); rcolFarm(p);
+}
+function groundAspect(b) { const [[s, w], [n, e]] = b, lat = (s + n) / 2 * Math.PI / 180; return (e - w) * Math.cos(lat) / (n - s); }
+function toPct(b) { const [[s, w], [n, e]] = b; return ([lon, lat]) => [100 * (lon - w) / (e - w), 100 * (n - lat) / (n - s)]; }
+function ringsOf(g) { return g.type === "Polygon" ? [g.coordinates[0]] : g.type === "MultiPolygon" ? g.coordinates.map((p) => p[0]) : []; }
+function imgURL(y, kind) { return (IMG[y] || {})[kind === "bsi" ? "bsi" : "tci"] || ""; }
+function thumbURL(y) { return (IMG[y] || {}).tci || ""; }
+function zoomFarm(dur = 1.1) {
+  const feats = F.zoom === "ponds" && F.ponds.length ? F.ponds.map((q) => q.f) : [F.data.footprint];
+  const b = L.geoJSON({ type: "FeatureCollection", features: feats }).getBounds().pad(F.zoom === "ponds" ? .5 : .45);
+  MAP.flyToBounds(b, { paddingTopLeft: [264, 112], paddingBottomRight: [400, 250], maxZoom: 18, duration: dur });
+}
+const PLAB = L.layerGroup().addTo(MAP);
+let MEASURE = null;
+function placeLabels() {   // each label tries 8 spots around its pond; first spot that hits no other label (and fewest ponds) wins
+  PLAB.clearLayers(); if (S.view !== "farm" || !F.labs) return;
+  MEASURE ||= document.createElement("canvas").getContext("2d"); MEASURE.font = "700 12px 'IBM Plex Mono', monospace";
+  const box = (b) => { const a = MAP.latLngToContainerPoint([b.getNorth(), b.getWest()]), c = MAP.latLngToContainerPoint([b.getSouth(), b.getEast()]); return { x0: a.x, y0: a.y, x1: c.x, y1: c.y }; };
+  const hit = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0, ponds = F.labs.map((l) => box(l.b)), placed = [];
+  F.labs.forEach((l, i) => {
+    const r = ponds[i], w = MEASURE.measureText(l.text).width + 6, h = 15, g = 3;
+    const spots = [[r.x0, r.y0 - h - g], [r.x0, r.y1 + g], [r.x1 + g, r.y0], [r.x0 - w - g, r.y0], [r.x1 - w, r.y0 - h - g], [r.x1 - w, r.y1 + g], [r.x1 + g, r.y1 - h], [r.x0 - w - g, r.y1 - h]];
+    const score = ([x, y]) => { const q = { x0: x, y0: y, x1: x + w, y1: y + h }; return placed.filter((p) => hit(p, q)).length * 100 + ponds.filter((o, j) => j !== i && hit(o, q)).length; };
+    let best = spots[0], bs = score(best);
+    for (const s of spots.slice(1)) { if (bs === 0) break; const v = score(s); if (v < bs) { best = s; bs = v; } }
+    if (bs >= 100) { let y = best[1]; while (placed.some((p) => hit(p, { x0: best[0], y0: y, x1: best[0] + w, y1: y + h }))) y += h + 2; best = [best[0], y]; }
+    placed.push({ x0: best[0], y0: best[1], x1: best[0] + w, y1: best[1] + h });
+    L.marker(MAP.containerPointToLatLng(best), { interactive: false, keyboard: false, icon: L.divIcon({ className: "", iconSize: null, iconAnchor: [0, 0],
+      html: `<div class="plabel" style="color:${l.col};opacity:${l.op}">${l.text}</div>` }) }).addTo(PLAB);
+  });
+}
+MAP.on("zoomend", placeLabels);
+function clipToFootprint(img, b) {
+  const [[s, w], [n, e]] = b, g = F.data.footprint.geometry || {}, polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+  if (!polys.length || !img) return;
+  const d = polys.map((pl) => pl.map((ring) => "M" + ring.map(([lon, lat]) => `${((lon - w) / (e - w)).toFixed(5)},${((n - lat) / (n - s)).toFixed(5)}`).join("L") + "Z").join("")).join("");
+  if (!document.getElementById("fpclip")) document.body.insertAdjacentHTML("beforeend", '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><clipPath id="fpclip" clipPathUnits="objectBoundingBox"><path id="fpclippath" clip-rule="evenodd"/></clipPath></svg>');
+  document.getElementById("fpclippath").setAttribute("d", d);
+  img.style.clipPath = "url(#fpclip)";
+}
+const CBAR = `<span class="cbar">BSI-E −1 <span class="grad" title="tick = 0.30 pond threshold"><u></u></span> 3 (tick 0.30)</span>`;
+function renderFrame() {
+  FARM.clearLayers();
+  if (!F.years.length) { PLAB.clearLayers(); $("#leg").innerHTML = "No yearly images for this farm yet."; return; }
+  const yr = F.years[F.yi], y = yr.year, [[s, w], [n, e]] = yr.bounds;
+  const ov = L.imageOverlay(imgURL(y, F.mode === "s2" ? "tci" : "bsi"), [[s, w], [n, e]], { className: "s2img" + (F.mode === "fill" ? " dim" : ""), interactive: false }).addTo(FARM);
+  if (F.mode !== "s2") clipToFootprint(ov.getElement(), yr.bounds);   // BSI-E only matters inside the footprint (the pond rule's area)
+  L.geoJSON(F.data.footprint, { interactive: false, style: { color: "#ffffff", weight: 1.6, dashArray: "5 4", fill: false, opacity: .9 } }).addTo(FARM);
+  const labs = [];
+  for (const pd of F.ponds) {
+    const area = pd.area[y] || 0, present = area > 0, scol = STATUS[pd.status][1];
+    const style = F.mode === "fill" ? { color: scol, weight: 2.6, fillColor: "#2a78d6", fillOpacity: present ? .85 : 0, dashArray: present ? null : "4 4" }
+      : F.mode === "bsi" ? { color: "#111111", weight: 1.6, fill: false, dashArray: present ? null : "4 4", opacity: present ? 1 : .6 }
+      : { color: pd.col, weight: 2.2, fill: false, dashArray: present ? null : "4 4", opacity: present ? 1 : .6 };
+    L.geoJSON(pd.f, { interactive: false, style: { color: "#ffffff", weight: (style.weight || 2) + 3.4, opacity: present ? .9 : .55, fill: false, dashArray: style.dashArray, lineJoin: "round" } }).addTo(FARM);   // white halo
+    const lay = L.geoJSON(pd.f, { interactive: false, style }).addTo(FARM);
+    labs.push({ b: lay.getBounds(), col: F.mode === "fill" ? scol : pd.col, op: present ? 1 : .7, text: `Pond ${pd.n} · ${present ? fmt(area) + " m²" : "absent"}` });
+  }
+  F.labs = labs; placeLabels();
+  const statuses = [...new Set(F.ponds.map((q) => q.status))];
+  $("#leg").innerHTML = F.mode === "fill" ? `<span><i style="background:#2a78d6"></i>pond that year</span>` + [...new Map(statuses.map((st) => STATUS[st])).entries()].map(([lab, col]) => `<span><i style="background:transparent;box-shadow:inset 0 0 0 2px ${col}"></i>${lab}</span>`).join("") + CBAR
+    : F.mode === "bsi" ? CBAR + `<span>blue = wet / pond, red = dry ground · black outline = pond that year</span>`
+    : `<span>Each pond in its own colour, same ID every year</span><span>dashed = absent that year · white dashed = farm footprint</span>`;
+  const vk = `${yr.window_start.slice(0, 7)} to ${yr.window_end.slice(0, 7)} · ${yr.n_valid_obs != null ? fmt(yr.n_valid_obs) + " clear days" : "clear days unknown"}`;
+  $("#yearbig").innerHTML = `${y}${yr.thin ? "<small>low imagery</small>" : ""}`;
+  $("#leg").insertAdjacentHTML("afterbegin", `<span>${vk}</span>`);
+  document.querySelectorAll(".th").forEach((th) => th.classList.toggle("on", +th.dataset.i === F.yi));
+  d3.select("#areaYear").attr("x1", areaX(y)).attr("x2", areaX(y));
+}
+document.querySelectorAll("#zoomseg button").forEach((b) => b.onclick = () => { F.zoom = b.dataset.z; document.querySelectorAll("#zoomseg button").forEach((x) => x.classList.toggle("on", x === b)); if (F.data) zoomFarm(.8); });
+document.querySelectorAll("#modes button").forEach((b) => b.onclick = () => { F.mode = b.dataset.m; document.querySelectorAll("#modes button").forEach((x) => x.classList.toggle("on", x === b));
+  if (F.data) { if ($("#thumbs").dataset.kind !== (F.mode === "s2" ? "s2" : "bsi")) drawThumbs(); renderFrame(); } });
+function drawThumbs() {
+  const th = $("#thumbs"), op = encodeURIComponent(S.op), all = F.data.history.years || [], evY = {};
+  F.ponds.forEach((p) => { if (p.status === "new" && p.ev?.first_present) (evY[p.ev.first_present] ||= []).push(`+ Pond ${p.n}`);
+    if (p.status === "removed" && p.ev?.last_present) (evY[p.ev.last_present + 1] ||= []).push(`− Pond ${p.n}`); });
+  th.style.gridTemplateColumns = `repeat(${Math.max(all.length, 1)},minmax(0,1fr))`;
+  th.innerHTML = all.map((y) => { const i = F.years.indexOf(y);
+    return `<div class="th${i < 0 ? " none" : ""}${y.thin ? " thin" : ""}" data-i="${i}">${i >= 0 ? `<img loading="lazy" src="${F.mode !== "s2" ? imgURL(y.year, "bsi") : thumbURL(y.year)}" alt="${y.year}">` : `<div style="height:122px"></div>`}
+      <div class="y"><span>${y.year}</span><span>${y.n_valid_obs != null ? fmt(y.n_valid_obs) + "d" : ""}</span></div>
+      <div class="ev" style="color:${evY[y.year] ? css("--accent") : y.thin ? css("--warn") : "transparent"}">${evY[y.year] ? evY[y.year].join(" ") : y.thin ? "low imagery" : "."}</div></div>`; }).join("");
+  th.querySelectorAll(".th").forEach((t) => t.onclick = () => { const i = +t.dataset.i; if (i >= 0) { stopPlay(); F.yi = i; renderFrame(); } });
+  th.dataset.kind = F.mode === "s2" ? "s2" : "bsi";
+  $("#stripk").textContent = F.mode !== "s2" ? "BSI-E each year · blue below 0.30 = pond, red = dry ground · click a year or press play" : "Summer image each year · yellow outline = ponds that year · click a year or press play";
+}
+function stopPlay() { if (F.playing) { clearInterval(F.playing); F.playing = null; $("#play").textContent = "▶"; } }
+$("#play").onclick = () => { if (F.playing) return stopPlay(); if (!F.years.length) return; $("#play").textContent = "❚❚"; F.playing = setInterval(() => { F.yi = (F.yi + 1) % F.years.length; renderFrame(); }, 900); };
+
+// ======================================================================= analysis (right cards)
+const farmsOf = (c, st) => DASH.farms.filter((f) => (!c || countryOf(f.region) === c) && (!st || f.region === `USA/${st}`));
+const reliable = (f) => f.area.map((a, i) => a == null || f.thin.includes(DASH.years[i]) ? null : a);
+function change(f) { const r = reliable(f), idx = r.map((v, i) => v == null ? -1 : i).filter((i) => i >= 0); if (idx.length < 2) return null;
+  const a = r[idx[0]], b = r[idx[idx.length - 1]]; return a > 0 ? 100 * (b / a - 1) : b > 0 ? Infinity : 0; }
+function areaIndex(fs) { return DASH.years.map((y, i) => { const v = fs.map((f) => { const r = reliable(f), m = d3.mean(r.filter((x) => x != null)); return m > 0 && r[i] != null ? r[i] / m : null; }).filter((x) => x != null); return v.length >= 3 ? d3.median(v) : null; }); }
+const regionsOf = (c, st) => Object.entries(DASH.regions).filter(([k]) => (c ? countryOf(k) === c : ACTIVE.has(countryOf(k))) && (!st || k === `USA/${st}`));
+function hbars(rows, max) {
+  const W = 356, rh = 19, x0 = 100, bw = W - x0 - 74; max = max || d3.max(rows, (r) => r[1]) || 1;
+  return `<svg viewBox="0 0 ${W} ${rows.length * rh + 6}">${rows.map(([n, v, col, txt, go], i) => `<g transform="translate(0,${i * rh + 3})" ${go ? `data-go="${go}" style="cursor:pointer"` : ""}>
+    <text x="${x0 - 6}" y="12" text-anchor="end" font-size="11.5" font-weight="${go ? 700 : 400}">${esc(n)}</text>
+    <rect x="${x0}" y="3" width="${bw}" height="11" rx="2" fill="#eef1ec"/><rect x="${x0}" y="3" width="${bw * v / max}" height="11" rx="2" fill="${col}"/>
+    <text x="${x0 + bw + 6}" y="12" font-size="11" font-family="IBM Plex Mono">${txt}</text></g>`).join("")}</svg>`;
+}
+function kpis(items) { return `<div class="kpis">${items.map(([k, v, s, c]) => `<div class="kpi"><div class="k">${k}</div><div class="v" style="${c ? "color:" + c : ""}">${v}</div><div class="s">${s}</div></div>`).join("")}</div>`; }
+const legend = (keys) => `<div class="keys">${keys.map(([, n, col]) => `<span><i style="background:${col}"></i>${n}</span>`).join("")}</div>`;
+const VK = [["correct", "Correct", QCC.correct], ["uncertain", "Uncertain", QCC.uncertain], ["incorrect", "Incorrect", QCC.incorrect]];
+const FPK = [["wet_runoff", "Wet runoff", "#d0562a"], ["other_water", "Natural water", "#3987e5"], ["unclear", "Unclear surface", "#9aa29c"], ["other", "Other", "#9085e9"]];
+const sumOf = (regs, field, keys) => { const g = {}; regs.forEach(([, r]) => Object.entries(r[field] || {}).forEach(([k, n]) => {
+  const kk = keys.some((x) => x[0] === k) ? k : "other"; g[kk] = (g[kk] || 0) + n; })); return g; };
+// the units a tier compares: countries at world level, states in the US, else the one place itself
+function units(c, st) {
+  let us;
+  if (!c) us = [...new Set(regionsOf(null).map(([k]) => countryOf(k)))].map((cc) => ({ name: COUNTRIES[cc]?.name || cc, regs: regionsOf(cc),
+    prec: (cc === "USA" ? PREC.US : PREC[cc])?.operation, go: ACTIVE.has(cc) ? "c:" + cc : null }));
+  else if (c === "USA" && !st) us = regionsOf("USA").map(([k, r]) => { const s2 = k.split("/")[1];
+    return { name: titleCase(s2), regs: [[k, r]], prec: PREC[k]?.operation, go: shown("USA", s2).length ? "s:" + s2 : null }; });
+  else us = [{ name: st ? titleCase(st) : COUNTRIES[c].name, regs: regionsOf(c, st), prec: (st ? PREC["USA/" + st] : c === "USA" ? PREC.US : PREC[c])?.operation, go: null }];
+  return us.sort((a, b) => (b.prec && b.prec.n >= 10 ? b.prec.precision : -1) - (a.prec && a.prec.n >= 10 ? a.prec.precision : -1));
+}
+function stacked(rows, keys, norm) {   // rows: [name, {key: n}, go]; norm = each bar as shares of its own total
+  const W = 356, rh = 20, x0 = 100, bw = W - x0 - 44, tot = (g) => d3.sum(keys, (k) => g[k[0]] || 0), max = d3.max(rows, (r) => tot(r[1])) || 1;
+  return `<svg viewBox="0 0 ${W} ${rows.length * rh + 6}">` + rows.map(([n, g, go], i) => { let x = x0; const T = tot(g);
+    return `<g transform="translate(0,${i * rh + 3})" ${go ? `data-go="${go}" style="cursor:pointer"` : ""}><text x="${x0 - 6}" y="12" text-anchor="end" font-size="11.5" font-weight="${go ? 700 : 400}">${esc(n)}</text>` +
+      keys.map(([k, lab, col]) => { const w = T ? bw * (g[k] || 0) / (norm ? T : max) : 0, r = w > 0 ? `<rect x="${x}" y="3" width="${w}" height="12" fill="${col}"><title>${lab}: ${g[k]}</title></rect>` : ""; x += w; return r; }).join("") +
+      `<text x="${(norm ? x0 + bw : x) + 5}" y="12" font-size="11" font-family="IBM Plex Mono">${T}</text></g>`; }).join("") + `</svg>`;
+}
+function scopeStats(c, st) {
+  if (!c) {   // world = the countries on the map
+    const ps = [...ACTIVE].map((k) => PREC[k === "USA" ? "US" : k] || {});
+    const agg = (f) => { const v = ps.map((q) => q[f]).filter(Boolean), cor = d3.sum(v, (x) => x.correct), n = d3.sum(v, (x) => x.n); return n ? { correct: cor, n, precision: cor / n } : null; };
+    return { op: agg("operation"), np: agg("no_pond"), n: d3.sum(regionsOf(null), ([, r]) => r.n), hist: PTS.filter((q) => q.img).length };
+  }
+  const P = PREC[st ? "USA/" + st : c === "USA" ? "US" : c || "All"] || {};
+  return { op: P.operation, np: P.no_pond, n: d3.sum(regionsOf(c, st), ([, r]) => r.n), hist: c ? shown(c, st).length : PTS.filter((p) => p.img).length };
+}
+function tierHead(name, lvl, cmp, s) {
+  const op = s.op && s.op.n >= 1 ? s.op : null, np = s.np && s.np.n >= 1 ? s.np : null;
+  return `<div class="card"><div class="tier"><b>${esc(name)}</b><span class="lvl">${lvl}</span><span class="cmp">${cmp}</span></div>${kpis([
+    ["QC farms", fmt(s.n), `${fmt(s.hist)} with yearly images`],
+    ["Precision", op ? Math.round(op.precision * 100) + "%" : "–", op ? `${op.correct} of ${op.n} BSI ponds right` : "none checked", op && pcol(op.precision, op.n)],
+    ["No-pond agree", np ? Math.round(np.precision * 100) + "%" : "–", np ? `${np.correct} of ${np.n} empty farms` : "none checked", np && pcol(np.precision, np.n)]])}</div>`;
+}
+function cardLeads(fs, c, st) {
+  const L = [], ch = fs.map(change).filter((v) => v != null && isFinite(v));
+  if (ch.length) L.push(`<b>${Math.round(100 * ch.filter((v) => v > 10).length / ch.length)}%</b> of farms increased pond area by more than 10% between the first and last clear year, and <b>${Math.round(100 * ch.filter((v) => v < -10).length / ch.length)}%</b> decreased by more than 10%.`);
+  const idx = areaIndex(fs), i22 = DASH.years.indexOf(2022);
+  if (idx[i22] != null && idx[i22] < 0.95) L.push(`2022 pond area was <b>${idx[i22].toFixed(2)}×</b> the long-term farm average, consistent with drought; a single-year snapshot would misread this as pond loss.`);
+  const thin = d3.sum(fs, (f) => f.thin.length) / Math.max(1, d3.sum(fs, (f) => f.area.filter((a) => a != null).length));
+  if (thin > 0.02) L.push(`<b>${Math.round(thin * 100)}%</b> of farm-years have fewer than 5 clear observations; annual estimates require a data-quality flag.`);
+  const regs = regionsOf(c, st), w = d3.sum(regs, ([, r]) => (r.fp.wet_runoff || 0) + (r.fp.other_water || 0)), inc = d3.sum(regs, ([, r]) => d3.sum(Object.values(r.fp)));
+  if (inc) L.push(`Wet runoff and natural water account for <b>${Math.round(100 * w / inc)}%</b> of false detections; a multi-temporal filter could separate persistent water from manure storage.`);
+  const nc = d3.sum(regs, ([, r]) => r.not_cafo);
+  if (nc) L.push(`<b>${nc}</b> sampled sites may not be cattle operations, indicating location errors upstream of BSI.`);
+  return L.length ? `<div class="card"><h3>Key observations</h3>${L.map((l, i) => `<div class="lead"><i>${i + 1}</i><div>${l}</div></div>`).join("")}</div>` : "";
+}
+function cardPrecision(us, noun) {
+  const rows = us.filter((u) => u.prec && u.prec.n >= 10);
+  if (rows.length < 2) return "";
+  const best = rows[0], worst = rows[rows.length - 1];
+  return `<div class="card"><h3>Detection precision by ${noun}</h3><p class="say">Precision ranges from <b>${Math.round(worst.prec.precision * 100)}%</b> (${esc(worst.name)}) to <b>${Math.round(best.prec.precision * 100)}%</b> (${esc(best.name)}).</p>
+    ${hbars(rows.map((u) => [u.name, u.prec.precision, pcol(u.prec.precision, u.prec.n), `${Math.round(u.prec.precision * 100)}% <tspan fill="#8a928c">${u.prec.correct}/${u.prec.n}</tspan>`, u.go]), 1)}
+    <p class="note">Precision = correct ÷ (correct + incorrect) for farms where BSI detected a pond; regions with at least 10 reviewed detections. Reflects the QC sample, not global accuracy. Select a row to open the region.</p></div>`;
+}
+function cardVerdicts(us, title) {
+  const rows = us.map((u) => [u.name, sumOf(u.regs, "verdict", VK), u.go]).filter((r) => d3.sum(Object.values(r[1])));
+  if (!rows.length) return "";
+  const g = sumOf(us.flatMap((u) => u.regs), "verdict", VK), T = d3.sum(Object.values(g));
+  return `<div class="card"><h3>${title}</h3><p class="say"><b>${Math.round(100 * (g.correct || 0) / T)}%</b> of ${fmt(T)} reviewed farms were judged correct and <b>${Math.round(100 * (g.incorrect || 0) / T)}%</b> incorrect.</p>
+    ${stacked(rows, VK, true)}${legend(VK)}<p class="note">Bars show each region's share of reviewed farms; the figure is the number reviewed.</p></div>`;
+}
+function cardFP(us, title) {
+  const rows = us.map((u) => [u.name, sumOf(u.regs, "fp", FPK), u.go]).filter((r) => d3.sum(Object.values(r[1])));
+  if (!rows.length) return "";
+  const g = sumOf(us.flatMap((u) => u.regs), "fp", FPK), T = d3.sum(Object.values(g));
+  return `<div class="card"><h3>${title}</h3><p class="say"><b>${Math.round(100 * ((g.wet_runoff || 0) + (g.other_water || 0)) / T)}%</b> of ${T} false detections were wet runoff or natural water.</p>
+    ${stacked(rows, FPK, false)}${legend(FPK)}</div>`;
+}
+const axT = (W, H, xt, yt, fs = 9.5) => `<text class="axt" x="${W / 2}" y="${H + fs}" text-anchor="middle" font-size="${fs}">${xt}</text><text class="axt" transform="translate(${-fs * .62},${H / 2}) rotate(-90)" text-anchor="middle" font-size="${fs}">${yt}</text>`;   // axis titles; the svg viewBox gets a left/bottom gutter
+const LN_T = 3.6, LN_ANIM = `<animate attributeName="stroke-dashoffset" from="1" to="0" dur="${LN_T}s" fill="freeze"/>`;   // line, dots and ball share the SVG clock
+const dotAnim = (t) => `<animate attributeName="opacity" from="0" to="1" begin="${t}s" dur=".35s" fill="freeze"/>`;
+const ballSvg = (d, col) => d ? `<circle class="ball" r="4" fill="${col}" stroke="#fff" stroke-width="1.5" style="filter:drop-shadow(0 0 5px ${col}) drop-shadow(0 0 2px #fff)"><animateMotion dur="${LN_T}s" fill="freeze" calcMode="paced" path="${d}"/><animate attributeName="opacity" from="1" to="0" begin="${LN_T}s" dur=".7s" fill="freeze"/></circle>` : "";
+function cardIndex(groups) {
+  const Y = DASH.years, W = 356, H = 140, m = { l: 28, r: 8, t: 8, b: 18 }, x = d3.scaleLinear([Y[0], Y[Y.length - 1]], [m.l, W - m.r]);
+  const vals = groups.flatMap((g) => g[1]).filter((v) => v != null); if (!vals.length) return "";
+  const y = d3.scaleLinear([Math.min(0.4, d3.min(vals)), Math.max(1.4, d3.max(vals))], [H - m.b, m.t]), ln = d3.line().defined((v) => v != null).x((v, i) => x(Y[i])).y((v) => y(v));
+  let s = `<line x1="${m.l}" x2="${W - m.r}" y1="${y(1)}" y2="${y(1)}" stroke="#c9d1c8" stroke-dasharray="3 3"/>`;
+  y.ticks(4).forEach((v) => { s += `<text x="${m.l - 4}" y="${y(v) + 3}" text-anchor="end" font-size="9.5">${v.toFixed(1)}</text>`; });
+  Y.filter((v, i) => i % 2 === 0).forEach((v) => { s += `<text x="${x(v)}" y="${H - 4}" text-anchor="middle" font-size="9.5">${v}</text>`; });
+  groups.forEach(([, v, col]) => { const d = ln(v); s += `<path class="ln" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" d="${d}" fill="none" stroke="${col}" stroke-width="2">${LN_ANIM}</path>` + v.map((q, i) => q == null ? "" : `<circle class="dot" opacity="0" cx="${x(Y[i])}" cy="${y(q)}" r="2.2" fill="${col}">${dotAnim((LN_T * i / Math.max(1, Y.length - 1)).toFixed(2))}</circle>`).join("") + ballSvg(d, col); });
+  return `<div class="card"><h3>Pond area over time</h3><p class="say">Pond area of the median farm relative to its own 2017–2025 mean (1.0 = average year). Years with fewer than 5 clear observations are excluded.</p><svg viewBox="-14 0 ${W + 24} ${H + 13}">${s}${axT(W, H, "Year", "Relative pond area (1.0 = mean)")}</svg>
+    ${groups.length > 1 ? `<div class="keys">${groups.map(([n, , col]) => `<span><i style="background:${col};height:3px;width:14px"></i>${n}</span>`).join("")}</div>` : ""}</div>`;
+}
+function cardEvents(fs) {
+  const kinds = [["new", "New pond", "#ec8454"], ["removed", "Pond removed", "#e66767"], ["transient", "Intermittent", "#e0a526"], ["seasonal", "Seasonal", "#b07a10"], ["one_off", "Single year", "#9aa29c"]];
+  return fs.length ? `<div class="card"><h3>How ponds change</h3><p class="say"><b>${fs.filter((f) => f.events.new).length}</b> of ${fs.length} farms show a new pond after 2017. Classes come from a rule-based change detector, not from reviewed labels.</p>${hbars(kinds.map(([k, n, col]) => { const v = d3.sum(fs, (f) => f.events[k] || 0); return [n, v, col, v]; }))}</div>` : "";
+}
+function cardFarms(list) {
+  return list.length ? `<div class="card"><h3>Farms with annual history (${list.length}) · sorted by magnitude of change</h3><div class="flist">${list.map((p) => { const f = DASH.farms.find((x) => x.op === p.op), ch = f ? change(f) : null;
+    return `<div class="fitem" data-op="${esc(p.op)}"><i style="border-color:${qcCol(p.qc)}"></i><span class="id">${esc(p.op)}</span><span class="m">${ch === Infinity ? "new" : pct(ch)}</span></div>`; }).join("")}</div></div>` : "";
+}
+function wire() { const r = $("#rcol");
+  r.querySelectorAll("[data-go]").forEach((el) => el.onclick = () => { const [k, v] = el.dataset.go.split(":"); k === "c" ? goCountry(v) : goState(v); });
+  r.querySelectorAll(".fitem").forEach((el) => el.onclick = () => goFarm(el.dataset.op)); if (typeof wireExtra === "function") wireExtra(); }
+function refreshRcol() { if (S.view === "world") rcolWorld(); else if (S.view === "country") rcolCountry(S.c); else if (S.view === "state") rcolState(S.st); }
+function sortByChange(list) { return list.sort((a, b) => { const fa = DASH.farms.find((x) => x.op === a.op), fb = DASH.farms.find((x) => x.op === b.op);
+  return Math.abs((fb && change(fb)) || 0) - Math.abs((fa && change(fa)) || 0); }); }
+const SCOL = ["#5fa8ff", "#f2b84b", "#4cc27a", "#e66767", "#b3a6ff", "#ec8454", "#9aa29c"];
+// tier 1: world, comparing countries
+function rcolWorld() {
+  const us = units(null);
+  $("#rcol").innerHTML = tierHead("World", "Tier 1 · world", `${ACTIVE.size} countries with images`, scopeStats()) +
+    cardIndex([...ACTIVE].map((c) => [COUNTRIES[c].name, areaIndex(farmsOf(c)), COUNTRIES[c].col])) +
+    (typeof cardSeasonScope === "function" ? cardSeasonScope() : "") + cardPrecision(us, "country") + cardLeads(farmsOf(null)) + (typeof cardSeasonScope === "function" ? cardAnzLink("", "every region") : "");
+  wire();
+}
+// tier 2: country, comparing its states (US) or showing its farms
+function rcolCountry(c) {
+  const fs = farmsOf(c), us = units(c), multi = us.length > 1, sts = [...new Set(fs.map((f) => f.region.split("/")[1]).filter(Boolean))];
+  const idx = c === "USA" && sts.length > 1 ? sts.map((st, i) => [titleCase(st), areaIndex(farmsOf(c, st)), SCOL[i % SCOL.length]]) : [[COUNTRIES[c].name, areaIndex(fs), COUNTRIES[c].col]];
+  $("#rcol").innerHTML = tierHead(COUNTRIES[c].name, "Tier 2 · country", multi ? `${us.length} states compared` : `${shown(c).length} farms`, scopeStats(c)) +
+    cardIndex(idx) + (typeof cardSeasonScope === "function" ? cardSeasonScope(c) : "") + cardPrecision(us, "state") +
+    cardEvents(fs) + (multi ? "" : cardFarms(sortByChange(shown(c)))) + cardLeads(fs, c) + (typeof cardSeasonScope === "function" ? cardAnzLink(c, COUNTRIES[c].name) : "");
+  wire();
+}
+// tier 3: state, comparing its farms
+function rcolState(st) {
+  const fs = farmsOf("USA", st), us = units("USA", st);
+  $("#rcol").innerHTML = tierHead(titleCase(st), "Tier 3 · state", `${shown("USA", st).length} farms`, scopeStats("USA", st)) +
+    cardIndex([[titleCase(st), areaIndex(fs), css("--accent")]]) + (typeof cardSeasonScope === "function" ? cardSeasonScope("USA", st) : "") + cardVerdicts(us, "QC verdicts") +
+    cardEvents(fs) + cardFarms(sortByChange(shown("USA", st))) + cardLeads(fs, "USA", st) + (typeof cardSeasonScope === "function" ? cardAnzLink("USA/" + st, titleCase(st)) : "");
+  wire();
+}
+let areaX = () => 0;
+function rcolFarm(p) {
+  const d = F.data, fp = d.footprint.properties, years = d.history.years || [], ok = years.filter((y) => y.pond_area_m2 != null && !y.thin);
+  const first = ok[0], last = ok[ok.length - 1], chg = first && last && first.pond_area_m2 > 0 ? 100 * (last.pond_area_m2 / first.pond_area_m2 - 1) : null;
+  const nNew = F.ponds.filter((q) => q.status === "new");
+  const head = F.ponds.length ? `${F.ponds.length} pond${F.ponds.length === 1 ? "" : "s"}${nNew.length ? `, ${nNew.length} new since ${Math.min(...nNew.map((q) => q.ev.first_present || 9999))}` : ""}` : `${fp.prod_pond_count ?? 0} pond(s) in 2025`;
+  $("#rcol").innerHTML = `<div class="card"><div class="tier"><b>${esc(p.op)}</b><span class="lvl">Tier 4 · site</span></div><h3>${esc(human(p.region))} · ${fmt(fp.footprint_ha, 0)} ha footprint</h3>
+      <div style="font:800 22px/1.15 var(--fd);font-stretch:74%;color:var(--forest)">${head}</div>
+      <div style="margin-top:6px"><span class="qc" style="color:${qcCol(fp.qc_result)};border-color:${qcCol(fp.qc_result)}">QC ${esc(fp.qc_result || "not reviewed")}</span>
+      <span class="say" style="margin-left:6px">Reviewer classification: <b>${esc(human(fp.qc_feature))}</b>${fp.qc_issue && fp.qc_issue !== "none" ? ` · ${esc(human(fp.qc_issue))}` : ""}</span></div>
+      ${fp.qc_notes ? `<p class="say">“${esc(fp.qc_notes)}”</p>` : ""}<div style="margin-top:8px">${kpis([["Pond area", last ? fmt(last.pond_area_m2 / 1000, 1) + "k" : "–", `m² in ${last ? last.year : "–"}`],
+        ["Change", chg == null ? "–" : pct(chg), first ? "since " + first.year : "", chg == null ? null : chg >= 0 ? "#d0562a" : "#3987e5"], ["Clear days", last?.n_valid_obs != null ? fmt(last.n_valid_obs) : "–", last ? last.year + " summer" : ""]])}</div></div>
+    <div class="card"><h3>Pond area per year</h3><svg id="area" viewBox="-14 0 380 173"></svg><div class="keys" id="areakeys"></div><p class="note">Pond area (m²) inside the footprint for each summer composite. Select a year on the chart to show it on the map.</p></div>
+    <div id="seasonSlot"></div>
+    <div class="card"><h3>Spectra · 2025 polygons vs 100 m around them</h3><svg id="spec" viewBox="-14 0 370 163"></svg><div class="keys" id="speckeys"></div><div class="note" id="specnote"></div></div>
+    <div class="card"><h3>What changed</h3><div id="changes"></div></div>`;
+  drawArea(); drawChanges(); drawSpectra(); if (typeof fillSeason === "function" && typeof ANZ !== "undefined" && ANZ) fillSeason(p.op);
+}
+const lineKey = (col, label, o = {}) => `<span><svg viewBox="0 0 20 8">${o.halo ? `<path d="M1 4H19" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>` : ""}<path d="M1 4H19" stroke="${col}" stroke-width="${o.w || 2}" stroke-linecap="round"${o.dash ? ' stroke-dasharray="4 3"' : ""}/></svg>${label}</span>`;
+function drawArea() {
+  const svg = d3.select("#area"), W = 356, H = 160, m = { l: 36, r: 8, t: 10, b: 20 }, years = F.data.history.years || [];
+  if (!years.length) return;
+  const ys = years.map((y) => y.year), x = d3.scaleLinear(d3.extent(ys), [m.l, W - m.r]); areaX = x;
+  svg.append("g").html(axT(W, H, "Year", "Pond area (m²)"));
+  const lines = F.ponds.map((p) => ({ col: p.col, v: ys.map((y) => p.area[y] ?? null) }));
+  lines.push({ col: "#000000", total: true, v: years.map((q, i) => q.pond_area_m2 ?? (F.ponds.length ? d3.sum(F.ponds, (p) => p.area[q.year] || 0) : null)) });   // total of all ponds, black
+  const y = d3.scaleLinear([0, (d3.max(lines.flatMap((l) => l.v)) || 1) * 1.08], [H - m.b, m.t]);
+  years.filter((q) => q.thin).forEach((q) => svg.append("rect").attr("x", x(q.year) - 9).attr("width", 18).attr("y", m.t).attr("height", H - m.t - m.b).attr("fill", "rgba(217,154,0,.14)"));
+  y.ticks(3).forEach((t) => { svg.append("line").attr("x1", m.l).attr("x2", W - m.r).attr("y1", y(t)).attr("y2", y(t)).attr("stroke", "#e3e7e2");
+    svg.append("text").attr("x", m.l - 4).attr("y", y(t) + 3).attr("text-anchor", "end").attr("fill", "#6b6f69").attr("font-size", 9.5).text(t >= 1000 ? t / 1000 + "k" : t); });
+  ys.filter((v, i) => i % 2 === 0).forEach((t) => svg.append("text").attr("x", x(t)).attr("y", H - 5).attr("text-anchor", "middle").attr("fill", "#6b6f69").attr("font-size", 9.5).text(t));
+  const cx = F.years.length ? x(F.years[F.yi].year) : -10;
+  svg.append("line").attr("id", "areaYear").attr("y1", m.t).attr("y2", H - m.b).attr("stroke", "#ec8454").attr("stroke-width", 1.5).attr("x1", cx).attr("x2", cx);
+  const dl = (i) => (LN_T * i / Math.max(1, ys.length - 1)).toFixed(2);   // dot appears when the line reaches it
+  const balls = [];
+  lines.forEach((l) => { const d = d3.line().defined((v) => v != null).x((v, i) => x(ys[i])).y((v) => y(v))(l.v); if (d) balls.push(ballSvg(d, l.col));
+    if (l.total) svg.append("path").attr("class", "ln").attr("pathLength", 1).attr("stroke-dasharray", 1).attr("stroke-dashoffset", 1).attr("d", d).attr("fill", "none").attr("stroke", "#ffffff").attr("stroke-opacity", .9).attr("stroke-width", 5).attr("stroke-linejoin", "round").html(LN_ANIM);   // white halo
+    svg.append("path").attr("class", "ln").attr("pathLength", 1).attr("stroke-dasharray", 1).attr("stroke-dashoffset", 1).attr("d", d).attr("fill", "none").attr("stroke", l.col).attr("stroke-width", l.total ? 2.4 : 2).attr("stroke-linejoin", "round").html(LN_ANIM);
+    l.v.forEach((v, i) => v != null && svg.append("circle").attr("class", "dot").attr("opacity", 0).attr("cx", x(ys[i])).attr("cy", y(v)).attr("r", l.total ? 3 : 2.4)
+      .attr("fill", l.total ? "#000" : v > 0 ? l.col : "rgba(20,22,26,.9)").attr("stroke", l.total ? "#fff" : l.col).attr("stroke-width", l.total ? 1.4 : 1).html(dotAnim(dl(i)))); });
+  svg.append("g").html(balls.join(""));
+  $("#areakeys").innerHTML = lineKey("#000", "<b>Total</b>", { halo: true, w: 2.4 }) + F.ponds.map((p) => lineKey(p.col, `Pond ${p.n}`)).join("") + (years.some((q) => q.thin) ? `<span><i style="background:rgba(217,154,0,.35)"></i>low imagery</span>` : "");
+  svg.append("rect").attr("x", m.l).attr("width", W - m.l - m.r).attr("height", H).attr("fill", "transparent").style("cursor", "pointer")
+    .on("click", (e) => { const yr = Math.round(x.invert(d3.pointer(e)[0])), i = F.years.findIndex((q) => q.year === yr); if (i >= 0) { stopPlay(); F.yi = i; renderFrame(); } });
+}
+function drawChanges() {
+  const rows = F.ponds.filter((p) => p.status !== "stable").map((p) => {
+    const e = p.ev, seen = Object.entries(p.area).filter(([, a]) => a > 0).map(([y]) => "'" + String(y).slice(2)).join(" ");
+    const what = p.status === "new" ? `<b>Pond ${p.n} new</b> · first detected ${e.first_present}` : p.status === "removed" ? `<b>Pond ${p.n} removed</b> · last detected ${e.last_present}` : `<b>Pond ${p.n} ${STATUS[p.status][0]}</b> · detected ${seen}`;
+    return `<div class="ev-row"><i style="background:${STATUS[p.status][1]}"></i><div>${what}</div></div>`; });
+  const ys = (F.data.history.years || []).filter((y) => y.pond_area_m2 != null && !y.thin);
+  for (let i = 1; i < ys.length - 1; i++) { const a = ys[i - 1].pond_area_m2, b = ys[i].pond_area_m2, c = ys[i + 1].pond_area_m2;
+    if (a > 0 && c > 0 && b < 0.85 * Math.min(a, c)) rows.push(`<div class="ev-row"><i style="background:var(--warn)"></i><div><b>${ys[i].year} decline</b> · total area ${fmt(100 * (b / a - 1))}% relative to ${ys[i - 1].year}, recovered the following year</div></div>`); }
+  $("#changes").innerHTML = (rows.length ? rows.join("") : `<p class="say">All ponds are present in every clear year.</p>`) + `<p class="note">Derived from the rule-based change detector; not reviewed labels.</p>`;
+}
+async function drawSpectra() {
+  const svg = d3.select("#spec"), op = S.op;
+  const rows = SPEC.filter((r) => r.n_valid_10m > 0).slice(0, 4).map((r) => {   // clean ring (all farm ponds removed) from analyzer.json
+    const q = typeof ANZ !== "undefined" && ANZ ? ANZ.polys.find((x) => x.pid === r.pid) : null; if (!q) return r;
+    const o = { ...r }; ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12", "bsi_e", "ndvi", "ndwi", "mndwi", "ndci"].forEach((k, i) => { if (q.r[i] != null) o["ring_" + k] = q.r[i]; }); return o; }), bands = ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"], W = 356, H = 150, m = { l: 32, r: 8, t: 10, b: 20 };
+  if (!rows.length) { svg.append("text").attr("x", 10).attr("y", 30).attr("fill", "#6b6f69").attr("font-size", 12).text("No 2025 polygons with spectra at this farm."); return; }
+  const x = d3.scalePoint(bands, [m.l, W - m.r]), y = d3.scaleLinear([0, (d3.max(rows.flatMap((r) => bands.flatMap((b) => [r[b], r["ring_" + b]]))) || .4) * 1.08], [H - m.b, m.t]);
+  y.ticks(4).forEach((t) => { svg.append("line").attr("x1", m.l).attr("x2", W - m.r).attr("y1", y(t)).attr("y2", y(t)).attr("stroke", "#e3e7e2");
+    svg.append("text").attr("x", m.l - 4).attr("y", y(t) + 3).attr("text-anchor", "end").attr("fill", "#6b6f69").attr("font-size", 9).text(t); });
+  ["B8A", "B11"].forEach((b) => { svg.append("rect").attr("x", x(b) - x.step() / 2 + 2).attr("width", x.step() - 4).attr("y", m.t).attr("height", H - m.t - m.b).attr("rx", 4)
+    .attr("fill", "rgba(236,132,84,.16)").attr("stroke", "rgba(236,132,84,.55)").attr("stroke-dasharray", "3 3"); });   // the two bands BSI-E uses
+  svg.append("text").attr("x", (x("B8A") + x("B11")) / 2).attr("y", m.t + 9).attr("text-anchor", "middle").attr("font-size", 8.5).attr("font-weight", 700).style("fill", "#ffb48f").text("BSI-E bands");
+  bands.forEach((b) => svg.append("text").attr("x", x(b)).attr("y", H - 5).attr("text-anchor", "middle").attr("font-size", 9).attr("font-weight", ["B8A", "B11"].includes(b) ? 800 : 400).style("fill", ["B8A", "B11"].includes(b) ? "#ffb48f" : null).text(b.slice(1)));
+  const SC = ["#ffffff", "#5fa8ff", "#f2b84b", "#b3a6ff"];
+  rows.forEach((r, i) => ["", "ring_"].forEach((k) => svg.append("path").attr("d", d3.line().defined((q) => q[1] != null)(bands.map((b) => [x(b), r[k + b] == null ? null : y(r[k + b])])))
+    .attr("fill", "none").attr("stroke", SC[i]).attr("stroke-width", 1.8).attr("stroke-dasharray", k ? "4 3" : null)));
+  svg.append("g").html(axT(W, H, "Sentinel-2 band", "Surface reflectance"));
+  $("#speckeys").innerHTML = rows.map((r, i) => lineKey(SC[i], `${esc(r.pid.split("_").pop())} <span class="mono" style="color:var(--muted)">BSI-E ${fmt(r.bsi_e, 2)}</span>`)).join("") +
+    lineKey("#cfd5d1", "polygon") + lineKey("#cfd5d1", "100 m ring", { dash: true });
+  $("#specnote").innerHTML = `Sentinel-2 surface reflectance of the 2025 production polygons (solid) and a 100 m surrounding ring with all farm ponds removed (dashed). <b style="color:#ffb48f">Orange: B8A and B11, the inputs to BSI-E.</b>`;
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<script src="analyzer.js" charset="utf-8"></script><script>const CS_FILES = true;</script><script src="casestudy.js" charset="utf-8"></script><script src="findings.js" charset="utf-8"></script>
+</body></html>
