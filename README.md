@@ -2,7 +2,7 @@
 
 A static dashboard of manure-pond detections at cattle operations (CAFOs). It was built by the Remote Sensing Lab, Saint Louis University (SLU RSL), for Climate TRACE.
 
-**Viewing:** not published. Clone the repo and serve it locally, e.g. `python -m http.server 8000`, then open http://localhost:8000/.
+**Live site:** https://rsl-slu.github.io/bsi_dashboard/ (or serve locally: `python -m http.server 8000`, then open http://localhost:8000/).
 
 ## What it shows
 
