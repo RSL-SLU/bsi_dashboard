@@ -2,11 +2,11 @@
 
 A static dashboard of manure-pond detections at cattle operations (CAFOs). It was built by the Remote Sensing Lab, Saint Louis University (SLU RSL), for Climate TRACE.
 
-**Live site:** https://rsl-slu.github.io/bsi_dashboard/
+**Viewing:** not published. Clone the repo and serve it locally, e.g. `python -m http.server 8000`, then open http://localhost:8000/.
 
 ## What it shows
 
-- **Map.** QC'd operations in China, Türkiye and the United States (799 farms; 7 US states). Each farm has a BSI-E pond history for each summer, 2017–2025.
+- **Map.** QC'd operations in 9 countries: Australia, Canada, China, France, Germany, New Zealand, Russia, Türkiye and the United States (1,399 farms; 7 US states). Each farm has a BSI-E pond history for each summer, 2017–2025.
   - Tiers: world → country → US state → farm.
   - The farm view shows yearly true-colour and BSI-E images, pond outlines, the pond area per year, and spectra.
   - For US farms and sample farms in other countries, it also shows monthly pond area.
