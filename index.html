@@ -272,7 +272,7 @@ const showTip = (html, e) => { tip.innerHTML = html; tip.hidden = false; const r
 const hideTip = () => { tip.hidden = true; };
 
 // ======================================================================= background map (Esri everywhere)
-const USE_GLOBE = false;   // 3D globe at world level (off: flat world map, simpler and lighter)
+const USE_GLOBE = true;   // 3D globe at world level (false: flat world map)
 const WORLD_B = [[-56, -168], [76, 190]];
 const MAP = L.map("map", { zoomControl: true, worldCopyJump: true, zoomSnap: 0.25, minZoom: 1.25 }).setView([30, 20], 2.5);
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Esri World Imagery" }).addTo(MAP);
