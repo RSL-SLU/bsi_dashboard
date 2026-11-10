@@ -503,7 +503,7 @@ function farmPins(list) {
 }
 function goCountry(c, push = true) {
   S.c = c; S.st = S.op = null; setLevel("country");
-  const f = LAND.features.find((x) => x.id === COUNTRIES[c].id), col = COUNTRIES[c].col;
+  const f = unwrapLon(LAND.features.find((x) => x.id === COUNTRIES[c].id)), col = COUNTRIES[c].col;   // unwrapped: Russia and the US cross the date line
   clipTo(f); L.geoJSON(f, { interactive: false, style: { color: col, weight: 2.5, fill: false } }).addTo(CTX);   // this country only, no neighbours
   if (c === "USA") {
     const ours = new Set(Object.keys(PREC).filter((k) => k.startsWith("USA/")).map((k) => k.slice(4)));

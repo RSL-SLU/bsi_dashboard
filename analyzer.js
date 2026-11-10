@@ -597,7 +597,7 @@ function fillSeason(op) {
   slot.outerHTML = `<div class="card season"><h3>Pond area by month · 2023–2025</h3><p class="say">${say}</p><svg viewBox="-14 0 ${W + 14} ${H + 13}">${s}${axT(W, H, "Month", "Pond area (m²)")}</svg>
     <div class="keys">${years.map((yr) => lineKey(YCOL[yr] || "#cfd5d1", String(yr), { w: 2.2 })).join("")}<span><i style="background:rgba(20,22,26,.9);border:1px solid #cfd5d1;border-radius:50%"></i>few clear days</span><span><i style="background:rgba(236,132,84,.3)"></i>yearly window</span></div>
     <svg class="hm" viewBox="0 0 ${W} ${HH}" style="margin-top:8px">${h}</svg>
-    <p class="note">Monthly Sentinel-2 median composites; BSI-E &lt; 0.30 within the footprint. Monthly data cover ${Object.keys(MONTHLY).length} farms: every US farm with a BSI pond and three sample farms per other country.</p></div>`;
+    <p class="note">Monthly Sentinel-2 median composites; BSI-E &lt; 0.30 within the footprint. Monthly data cover ${Object.keys(MONTHLY).length} farms: every US farm with a BSI pond, three reviewer-confirmed farms per other country, and the five largest BSI ponds in Russia and New Zealand (few reviews there).</p></div>`;
 }
 // tier cards: seasonal sample in scope, and the link to the Analyzer
 function cardSeasonScope(c, st) {
