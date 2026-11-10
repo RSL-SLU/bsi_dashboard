@@ -581,7 +581,7 @@ function fillSeason(op) {
     const pts = rows.map((r, i) => [x(i + 1), r && r.pond_m2 != null ? y(r.pond_m2) : null, r]);
     const ln = d3.line().defined((p) => p[1] != null).curve(d3.curveMonotoneX)(pts), c = YCOL[yr] || "#cfd5d1";
     s += `<path pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" d="${ln}" fill="none" stroke="${c}" stroke-width="${yr === years[years.length - 1] ? 2.4 : 1.8}">${LN_ANIM}</path>` +
-      pts.map((p, i) => p[1] == null ? "" : `<circle cx="${p[0]}" cy="${p[1]}" r="${lowMonth(p[2]) ? 2.6 : 2.4}" fill="${lowMonth(p[2]) ? "rgba(20,22,26,.9)" : c}" stroke="${c}" opacity="0">${dotAnim((LN_T * i / 11).toFixed(2))}<title>${MONL[i]} ${yr}: ${fmt(p[2].pond_m2)} m² · ${fmt(p[2].clear_days, 0)} clear days</title></circle>`).join("") + ballSvg(ln, c); });
+      pts.map((p, i) => p[1] == null ? "" : `<circle cx="${p[0]}" cy="${p[1]}" r="${lowMonth(p[2]) ? 2.6 : 2.4}" fill="${lowMonth(p[2]) ? "rgba(20,22,26,.9)" : c}" stroke="${c}" opacity="0">${dotAnim((LN_T * i / 11).toFixed(2))}<title>${MONL[i]} ${yr}: ${fmt(p[2].pond_m2)} m² · ${fmt(p[2].clear_days, 0)} clear days${p[2].snow_frac > .05 ? ` · ${Math.round(p[2].snow_frac * 100)}% of views snow` : ""}${(p[2].valid_frac ?? 1) < .6 ? ` · only ${Math.round((p[2].valid_frac || 0) * 100)}% of the farm visible` : ""}</title></circle>`).join("") + ballSvg(ln, c); });
   // heat strip: wet fraction per 2025 polygon per month
   const ponds = d.ponds.slice(0, 6), cols = d.months.length, hx = 52, cw = (W - hx - 4) / cols, rh = 11, HH = 18 + ponds.length * rh + 14;
   let h = `<defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line y2="4" stroke="rgba(255,255,255,.18)" stroke-width="1.5"/></pattern></defs>`;
@@ -591,13 +591,13 @@ function fillSeason(op) {
       h += `<rect class="c" x="${hx + j * cw}" y="${16 + i * rh}" width="${cw - .6}" height="${rh - 1.2}" rx="1.2" fill="${bad ? "url(#hatch)" : wc(v)}"><title>${esc(p.pid.split("_").pop())} · ${r.month}: ${bad ? "no clear view" : Math.round(v * 100) + "% wet"}</title></rect>`; }); });
   years.forEach((yr, k) => { const j = d.months.findIndex((r) => r.month.startsWith(yr)); if (j < 0) return;
     h += `<text x="${hx + j * cw}" y="10" font-size="9" font-weight="700" style="fill:${YCOL[yr] || "#fff"}">${yr}</text>` + (k ? `<line x1="${hx + j * cw - .3}" x2="${hx + j * cw - .3}" y1="12" y2="${16 + ponds.length * rh}" stroke="rgba(255,255,255,.5)"/>` : ""); });
-  h += `<text x="${hx}" y="${HH - 2}" font-size="8.5" fill="rgba(236,241,238,.55)">Shade: share of polygon pixels with BSI-E &lt; 0.30 · hatched: no cloud-free observation</text>`;
+  h += `<text x="${hx}" y="${HH - 2}" font-size="8.5" fill="rgba(236,241,238,.55)">Shade: share of polygon pixels with BSI-E &lt; 0.30 · hatched: no cloud- and snow-free observation</text>`;
   const cyc = seasonCycle(d), pk = d3.maxIndex(cyc, (v) => v ?? -1), lo = d3.minIndex(cyc, (v) => v ?? Infinity), wv = d3.mean(win.map((mo) => cyc[mo - 1]).filter((v) => v != null));
   const say = cyc[pk] ? `Pond area peaks in <b>${MONL[pk]}</b> (${kfmt(cyc[pk])} m²) and is lowest in <b>${MONL[lo]}</b>; the annual summer window captures <b>${Math.round(100 * (wv || 0) / cyc[pk])}%</b> of peak extent.` : "Insufficient cloud-free months.";
   slot.outerHTML = `<div class="card season"><h3>Pond area by month · 2023–2025</h3><p class="say">${say}</p><svg viewBox="-14 0 ${W + 14} ${H + 13}">${s}${axT(W, H, "Month", "Pond area (m²)")}</svg>
     <div class="keys">${years.map((yr) => lineKey(YCOL[yr] || "#cfd5d1", String(yr), { w: 2.2 })).join("")}<span><i style="background:rgba(20,22,26,.9);border:1px solid #cfd5d1;border-radius:50%"></i>few clear days</span><span><i style="background:rgba(236,132,84,.3)"></i>yearly window</span></div>
     <svg class="hm" viewBox="0 0 ${W} ${HH}" style="margin-top:8px">${h}</svg>
-    <p class="note">Monthly Sentinel-2 median composites; BSI-E &lt; 0.30 within the footprint. Monthly data cover ${Object.keys(MONTHLY).length} farms: every US farm with a BSI pond, three reviewer-confirmed farms per other country, and the five largest BSI ponds in Russia and New Zealand (few reviews there).</p></div>`;
+    <p class="note">Monthly Sentinel-2 median composites; BSI-E &lt; 0.30 within the footprint. Snow and ice are masked in every scene and scenes with the sun below 25° are dropped, so winter months with too little snow-free view are hollow. Monthly data cover ${Object.keys(MONTHLY).length} farms: every US farm with a BSI pond, three reviewer-confirmed farms per other country, and the five largest BSI ponds in Russia and New Zealand (few reviews there).</p></div>`;
 }
 // tier cards: seasonal sample in scope, and the link to the Analyzer
 function cardSeasonScope(c, st) {
